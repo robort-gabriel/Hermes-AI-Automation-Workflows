@@ -134,6 +134,24 @@ class Handler(BaseHTTPRequestHandler):
                 self._json({"live_mode": fetch_setting("live_mode") or "off"})
                 return
 
+            # Serve static files from the jobs/ directory (resumes, etc.). Resolve
+            # and confirm containment before any read -- a raw ROOT.joinpath(*parts)
+            # lets a path like /jobs/../../.env or /jobs/../data/job-hunter.db escape
+            # the jobs/ folder and read anything on disk the process can access.
+            if parts[0] == "jobs" and len(parts) >= 2:
+                jobs_root = (ROOT / "jobs").resolve()
+                file_path = jobs_root.joinpath(*parts[1:]).resolve()
+                if file_path.is_relative_to(jobs_root) and file_path.is_file():
+                    content_types = {".md": "text/markdown; charset=utf-8", ".pdf": "application/pdf", ".json": "application/json; charset=utf-8"}
+                    ct = content_types.get(file_path.suffix, "application/octet-stream")
+                    body = file_path.read_bytes()
+                    self.send_response(200)
+                    self.send_header("Content-Type", ct)
+                    self.send_header("Content-Length", str(len(body)))
+                    self.end_headers()
+                    self.wfile.write(body)
+                    return
+
             self._not_found()
         except sqlite3.OperationalError as e:
             self._json({"error": f"database not ready: {e}"}, status=503)
