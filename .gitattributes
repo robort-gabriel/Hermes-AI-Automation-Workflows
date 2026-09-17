@@ -1,0 +1,8 @@
+# install.command is a bash script -- CRLF line endings break it on macOS
+# (bad shebang, syntax errors). Force LF regardless of the cloning machine's
+# git autocrlf setting.
+install.command text eol=lf
+*.py text eol=lf
+
+# install.bat is a Windows batch file -- keep CRLF.
+install.bat text eol=crlf

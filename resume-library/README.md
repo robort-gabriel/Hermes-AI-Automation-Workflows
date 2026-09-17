@@ -6,10 +6,14 @@ folder -- it is never overwritten or re-uploaded by the tailoring output
 
 ## Expected files
 
-- `resume.md` -- your base resume in Markdown. Replace the placeholder file
-  in this folder with your real one. Keep it structured (headings for
+- `resume.md` -- your base resume in Markdown. Git-ignored (see Privacy
+  below). If it doesn't exist yet, `scripts/setup-hermes-profile.py` (run via
+  `install.bat` / `install.command`) seeds it from `resume.example.md`.
+  Replace it with your real resume -- keep it structured (headings for
   Summary / Experience / Skills / Education) so the resume-editor skill can
   reorder and re-emphasize sections reliably.
+- `resume.example.md` -- the tracked, generic starting template. Never put
+  real personal information in this file; it's the one that gets committed.
 - `resume.pdf` (optional) -- a rendered copy for your own reference. Not
   read by the pipeline; `resume.md` is the only source the skills parse.
 
@@ -23,7 +27,8 @@ folder -- it is never overwritten or re-uploaded by the tailoring output
 ## Privacy
 
 `resume.md` is git-ignored on purpose -- it holds your real name, contact
-details, and work history. The only version ever committed to this repo is
-the placeholder template; your real resume stays local, untracked, and never
-gets pushed anywhere. If you fork/clone this repo elsewhere, you'll need to
-drop your real `resume.md` back in manually.
+details, and work history. Only `resume.example.md` (the generic template)
+is ever committed. Your real resume stays local, untracked, and never gets
+pushed anywhere. If you clone this repo on a new machine, the setup script
+will seed `resume.md` from the example template for you -- then replace it
+with your real one.

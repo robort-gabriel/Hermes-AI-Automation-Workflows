@@ -90,8 +90,17 @@ writer, and the dashboard server never calls it with a mutating subcommand.
 
 ## Hermes profile
 
-A dedicated Hermes profile owns automation: `terminal.cwd` pointing at this
-repo, the two skills under `hermes-skills/` installed, and one cron job
-(periodic job-finder run) gated by `live_mode` -- off by default, same
-pattern as `gumroad-pdf-factory`. All mutation originates from a Hermes
-skill run (chat-invoked or cron), never from the dashboard process.
+A dedicated Hermes profile (`job-hunter`) owns automation: `terminal.cwd`
+pointing at this repo, the two skills under `hermes-skills/` installed, and
+one cron job (periodic job-finder run) gated by `live_mode` -- off by
+default, same pattern as `gumroad-pdf-factory`. All mutation originates from
+a Hermes skill run (chat-invoked or cron), never from the dashboard process.
+
+`install.bat` / `install.command` (thin, platform-specific launchers) call
+`scripts/setup-hermes-profile.py`, which creates/repairs that profile:
+`terminal.cwd`, `hermes-skills/SOUL.md`, the two skill specs, the cron job,
+`.env`, the DB, and a seeded `resume-library/resume.md` if missing. It's
+idempotent -- re-running it only fills in what's missing and never
+overwrites existing model config, resume content, or DB data. Keep
+`hermes-skills/SOUL.md` and the two `SKILL.md` files as the single source of
+truth; the setup script copies them into the profile, never the other way.

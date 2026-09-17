@@ -13,14 +13,55 @@ See [CLAUDE.md](CLAUDE.md) for the full architecture.
 ## Requirements
 
 - Python 3, stdlib only -- nothing under `scripts/` imports a third-party
-  package, so there's nothing to `pip install`.
+  package, so there's nothing to `pip install`. The installer gets Python for
+  you if it's missing.
 - A free local port, **5301** (the dashboard binds to `127.0.0.1` only).
-- Hermes AI installed, to actually run the job-finder / resume-editor skills.
+- **Hermes AI** installed (from nousresearch.com) -- required to actually run
+  the job-finder / resume-editor skills. The installer wires up the profile,
+  but can't install Hermes itself.
 
-## Setup
+## Install & run -- the easy way (recommended)
 
-1. **Add your CV.** Replace the placeholder in `resume-library/resume.md`
-   with your real resume. See `resume-library/README.md`.
+Pick your platform, from inside this project folder:
+
+- **Windows:** double-click **`install.bat`**.
+- **macOS:** double-click **`install.command`** in Finder. (If macOS warns
+  it's from an unidentified developer, right-click it -> **Open** once to
+  approve it.)
+
+What it does, automatically -- safe to re-run any time, it only fills in
+what's missing and never touches existing data:
+1. Checks for Python 3 and installs it if missing (via `winget` on Windows,
+   `brew` on macOS).
+2. Creates the **`job-hunter`** Hermes profile if it doesn't exist yet, and
+   points its `terminal.cwd` at this folder.
+3. Best-effort copies a working model/provider from whatever Hermes profile
+   you already use, so chat works immediately -- if that doesn't pan out, it
+   tells you to run `hermes -p job-hunter model` to pick one yourself
+   (including free tiers).
+4. Installs the `job-finder` / `resume-editor` skills and this profile's
+   persona (`hermes-skills/SOUL.md`) into the profile.
+5. Seeds `resume-library/resume.md` from the example template if you don't
+   have one yet.
+6. Creates `.env` with `PROJECT_ROOT` set to this folder.
+7. Initializes the database if one doesn't already exist.
+8. Creates the daily job-finder cron job, **paused** -- it won't run until
+   you set `live_mode=on`.
+
+After it finishes: run `hermes -p job-hunter chat` and try "find jobs" to
+test a manual run.
+
+## Install -- manual steps
+
+If you'd rather do it by hand, or you're scripting a deploy, `install.bat` /
+`install.command` are thin wrappers around `python scripts/setup-hermes-profile.py`
+-- run that script directly (it's what actually does all of the above) once
+Python and Hermes are both installed.
+
+Everything the installer does can also be done one step at a time:
+
+1. **Add your CV.** Replace `resume-library/resume.md` (seeded from
+   `resume.example.md`) with your real resume. See `resume-library/README.md`.
 2. **Set your targets.** Edit `config/target-companies.md` with real company
    names + careers URLs, and fill in your role/seniority/location defaults in
    `config/search-config.md`.
