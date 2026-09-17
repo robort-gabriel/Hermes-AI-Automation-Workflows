@@ -108,3 +108,4 @@ python -m unittest discover -s tests
 - No approve/publish/send step of any kind, by design -- see
   [CLAUDE.md](CLAUDE.md) for why the dashboard is read-only.
 # Hermes-AI-Automation-Workflows
+# Hermes-AI-Automation-Workflows
