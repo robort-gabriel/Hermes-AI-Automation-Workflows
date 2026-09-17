@@ -2,6 +2,7 @@ data/*.db
 data/*.db-*
 jobs/*
 !jobs/.gitkeep
+resume-library/resume.md
 resume-library/resume.pdf
 .env
 __pycache__/

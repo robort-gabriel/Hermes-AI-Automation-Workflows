@@ -19,3 +19,11 @@ folder -- it is never overwritten or re-uploaded by the tailoring output
   input. If your real experience changes, update it yourself.
 - The resume-editor skill never invents experience, employers, titles, or
   dates that aren't in this file.
+
+## Privacy
+
+`resume.md` is git-ignored on purpose -- it holds your real name, contact
+details, and work history. The only version ever committed to this repo is
+the placeholder template; your real resume stays local, untracked, and never
+gets pushed anywhere. If you fork/clone this repo elsewhere, you'll need to
+drop your real `resume.md` back in manually.

@@ -23,8 +23,13 @@ anywhere else -- it breaks `updated_at` and the event timeline.
 
 ## Step 1 -- Start the run
 
-If the user gave a role/seniority/location in chat, use those. Otherwise fall
-back to the defaults in `config/search-config.md`.
+If the user gave a role/seniority/location in chat, use those for one run.
+
+Otherwise (including every unattended/cron invocation), `config/search-config.md`
+lists **two** role defaults (currently "AI Automation Engineer" and "Macro
+Analyst") -- start one separate run per listed role default, and take each
+run through every step below to completion (Step 7) before starting the
+next one. Don't merge both roles into a single run.
 
 ```bash
 python3 scripts/db.py start-run --role "<role>" --seniority "<seniority>" --location "<location>"

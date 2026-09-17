@@ -6,9 +6,25 @@ field. A chat request always overrides these for that one run.
 
 ## Role defaults
 
-- **Role / title:** _(fill in, e.g. "Senior Backend Engineer")_
-- **Seniority:** _(e.g. "Senior", "Mid-level", "Staff")_
-- **Location / remote preference:** _(e.g. "Remote, US" or "Hybrid, Chicago")_
+Two target roles, reflecting the two distinct tracks on the candidate's CV.
+When a chat request doesn't specify a role, an unattended (cron) run starts
+one separate run per role below (each processed to completion before the
+next starts) rather than picking just one.
+
+1. **Role / title:** AI Automation Engineer
+   - Also matches close postings titled "AI Automation Architect", "AI
+     Automation Specialist", "Automation Engineer", or "AI Workflow
+     Engineer" -- title wording varies more than the underlying role.
+2. **Role / title:** Macro Analyst
+   - Also matches "Macro Research Analyst", "Market Analyst", or "Research
+     Analyst" postings with a macro/markets focus.
+
+- **Seniority:** Entry-level / Junior
+- **Location / remote preference:** Remote, worldwide
+
+Edit any of the above at any time -- these are just the unattended defaults;
+a chat-invoked run can always override role/seniority/location for that one
+run.
 
 ## Aggregators to exclude from supplementary search
 
