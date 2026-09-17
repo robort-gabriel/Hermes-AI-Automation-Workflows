@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Job Hunter</title>
+<style>
+  :root {
+    --bg: #f6f7f9;
+    --card: #ffffff;
+    --border: #e3e6ea;
+    --text: #1c2126;
+    --muted: #667085;
+    --accent: #2f6fed;
+    --good: #1a7f37;
+    --warn: #b45309;
+    --bad: #c0342c;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+  }
+  header {
+    padding: 20px 24px 12px;
+    border-bottom: 1px solid var(--border);
+    background: var(--card);
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  header h1 { font-size: 18px; margin: 0; }
+  header .tag {
+    font-size: 12px;
+    color: var(--muted);
+  }
+  #status-bar {
+    font-size: 12px;
+    color: var(--muted);
+    padding: 8px 24px;
+  }
+  main {
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .run {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+  .run-head {
+    padding: 14px 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    cursor: pointer;
+    flex-wrap: wrap;
+  }
+  .run-head:hover { background: #fafbfc; }
+  .run-title { font-weight: 600; font-size: 14px; }
+  .run-sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .badge {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 3px 9px;
+    border-radius: 999px;
+    text-transform: uppercase;
+    letter-spacing: .02em;
+    white-space: nowrap;
+  }
+  .badge-new { background: #eef1f5; color: var(--muted); }
+  .badge-researching { background: #e8f0fe; color: var(--accent); }
+  .badge-jobs_found { background: #e8f0fe; color: var(--accent); }
+  .badge-resume_ready { background: #fff6e5; color: var(--warn); }
+  .badge-presented { background: #e6f4ea; color: var(--good); }
+  .badge-rejected, .badge-failed { background: #fdecea; color: var(--bad); }
+  .run-body {
+    border-top: 1px solid var(--border);
+    padding: 12px 16px 16px;
+    display: none;
+  }
+  .run-body.open { display: block; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 4px; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; font-size: 11px; text-transform: uppercase; }
+  td a { color: var(--accent); text-decoration: none; }
+  td a:hover { text-decoration: underline; }
+  .score { font-weight: 600; }
+  .empty { color: var(--muted); font-size: 13px; padding: 8px 0; }
+  .events { margin-top: 14px; }
+  .events h4 { font-size: 12px; color: var(--muted); text-transform: uppercase; margin: 0 0 6px; }
+  .event-row { font-size: 12px; color: var(--muted); padding: 3px 0; display: flex; gap: 8px; }
+  .event-row .t { flex: 0 0 140px; color: #99a1ab; }
+  .no-runs { text-align: center; color: var(--muted); padding: 60px 20px; font-size: 14px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Job Hunter</h1>
+  <span class="tag" id="header-tag">read-only dashboard</span>
+</header>
+<div id="status-bar">Loading…</div>
+<main id="runs"></main>
+
+<script>
+const REFRESH_MS = 15000;
+
+function esc(s) {
+  return (s ?? "").toString().replace(/[&<>"']/g, c => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+  }[c]));
+}
+
+function fmtDate(s) {
+  if (!s) return "";
+  return s.replace("T", " ").slice(0, 16);
+}
+
+function badge(status) {
+  return `<span class="badge badge-${esc(status)}">${esc(status.replace("_", " "))}</span>`;
+}
+
+async function loadRuns() {
+  const res = await fetch("/api/runs");
+  if (!res.ok) throw new Error("failed to load runs");
+  return res.json();
+}
+
+async function loadRun(id) {
+  const res = await fetch(`/api/runs/${id}`);
+  if (!res.ok) throw new Error("failed to load run detail");
+  return res.json();
+}
+
+function renderJobsTable(jobs) {
+  if (!jobs || !jobs.length) {
+    return `<div class="empty">No jobs logged yet for this run.</div>`;
+  }
+  const rows = jobs.map(j => {
+    const resumeLinks = [];
+    if (j.resume_md_path) resumeLinks.push(`<a href="/${esc(j.resume_md_path)}" target="_blank">MD</a>`);
+    if (j.resume_pdf_path) resumeLinks.push(`<a href="/${esc(j.resume_pdf_path)}" target="_blank">PDF</a>`);
+    return `<tr>
+      <td>${esc(j.company)}</td>
+      <td>${esc(j.title)}</td>
+      <td>${esc(j.location || "")}</td>
+      <td class="score">${j.match_score ?? "—"}</td>
+      <td>${badge(j.status)}</td>
+      <td>${resumeLinks.join(" · ") || "—"}</td>
+      <td><a href="${esc(j.url)}" target="_blank">posting ↗</a></td>
+    </tr>`;
+  }).join("");
+  return `<table>
+    <thead><tr>
+      <th>Company</th><th>Title</th><th>Location</th><th>Match</th><th>Status</th><th>Resume</th><th>Source</th>
+    </tr></thead>
+    <tbody>${rows}</tbody>
+  </table>`;
+}
+
+function renderEvents(events) {
+  if (!events || !events.length) return "";
+  const rows = events.slice().reverse().map(e =>
+    `<div class="event-row"><span class="t">${fmtDate(e.created_at)}</span><span>${esc(e.event)}${e.message ? " — " + esc(e.message) : ""}</span></div>`
+  ).join("");
+  return `<div class="events"><h4>Timeline</h4>${rows}</div>`;
+}
+
+const openRuns = new Set();
+const detailCache = new Map();
+
+async function renderRuns() {
+  const statusBar = document.getElementById("status-bar");
+  try {
+    const runs = await loadRuns();
+    statusBar.textContent = `${runs.length} run(s) · last updated ${new Date().toLocaleTimeString()}`;
+    const container = document.getElementById("runs");
+    if (!runs.length) {
+      container.innerHTML = `<div class="no-runs">No search runs yet. Runs are created by the job-finder skill in Hermes.</div>`;
+      return;
+    }
+    container.innerHTML = runs.map(r => {
+      const sub = [r.seniority, r.location].filter(Boolean).join(" · ");
+      return `<div class="run" data-id="${r.id}">
+        <div class="run-head" onclick="toggleRun(${r.id})">
+          <div>
+            <div class="run-title">${esc(r.role)}</div>
+            <div class="run-sub">${esc(sub)} · ${r.job_count} job(s) found · ${r.resume_ready_count} resume(s) ready · started ${fmtDate(r.created_at)}</div>
+          </div>
+          ${badge(r.status)}
+        </div>
+        <div class="run-body" id="run-body-${r.id}"></div>
+      </div>`;
+    }).join("");
+    for (const id of openRuns) {
+      const body = document.getElementById(`run-body-${id}`);
+      if (body) { body.classList.add("open"); renderRunDetail(id); }
+    }
+  } catch (e) {
+    statusBar.textContent = "Could not reach the dashboard server / database.";
+  }
+}
+
+async function renderRunDetail(id) {
+  const body = document.getElementById(`run-body-${id}`);
+  if (!body) return;
+  try {
+    const run = await loadRun(id);
+    detailCache.set(id, run);
+    body.innerHTML = (run.error_message ? `<div class="empty">Error: ${esc(run.error_message)}</div>` : "")
+      + renderJobsTable(run.jobs) + renderEvents(run.events);
+  } catch (e) {
+    body.innerHTML = `<div class="empty">Could not load run detail.</div>`;
+  }
+}
+
+function toggleRun(id) {
+  const body = document.getElementById(`run-body-${id}`);
+  if (!body) return;
+  if (openRuns.has(id)) {
+    openRuns.delete(id);
+    body.classList.remove("open");
+  } else {
+    openRuns.add(id);
+    body.classList.add("open");
+    renderRunDetail(id);
+  }
+}
+
+renderRuns();
+setInterval(renderRuns, REFRESH_MS);
+</script>
+</body>
+</html>
