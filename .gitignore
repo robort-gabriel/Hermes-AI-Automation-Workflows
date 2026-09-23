@@ -1,10 +1,16 @@
 data/*.db
 data/*.db-*
+data/*.pid
+data/*.log
 jobs/*
 !jobs/.gitkeep
-resume-library/resume.md
-resume-library/resume.pdf
+resume-library/*
+!resume-library/README.md
+# A resume or its JSON dropped in the project root by mistake must never be committed.
+/*.pdf
+/*.json
 .env
+CLAUDE.md
 __pycache__/
 *.pyc
 .venv/

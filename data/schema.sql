@@ -4,9 +4,10 @@
 -- (rejected / failed can happen from most states)
 --
 -- One row per discovered listing in `jobs`, linked to the run that found it.
--- Folder is truth for generated content (resume.md/.pdf, job-posting.json,
+-- Folder is truth for generated content (resume.pdf, job-posting.json,
 -- match-notes.md live under jobs/<id>-<company-slug>/) -- this DB only ever
 -- stores paths into that folder, never file bytes or long-form copy.
+-- Resumes are PDF only: there is no Markdown resume anywhere in the pipeline.
 --
 -- Single-user app: one operator, one CV, no accounts/login table.
 
@@ -38,10 +39,10 @@ CREATE TABLE IF NOT EXISTS jobs (
 
   company TEXT NOT NULL,
   title TEXT NOT NULL,
-  url TEXT NOT NULL,               -- source posting URL, on the company's own domain
+  url TEXT NOT NULL,               -- posting URL on the company's own careers page
   location TEXT,
-  source TEXT,                     -- 'target-list' | 'search-verified'
-  posted_date TEXT,
+  source TEXT,                     -- 'target-list' | 'career-page-discovered'
+  posted_date TEXT,                -- YYYY-MM-DD; NULL means the date could not be verified
 
   match_score INTEGER,             -- 0-100
   match_notes TEXT,
@@ -49,7 +50,6 @@ CREATE TABLE IF NOT EXISTS jobs (
   status TEXT NOT NULL DEFAULT 'found',   -- found | resume_ready | skipped
 
   job_folder TEXT,                 -- jobs/<id>-<company-slug>/
-  resume_md_path TEXT,
   resume_pdf_path TEXT,
   error_message TEXT,
 
@@ -67,7 +67,7 @@ CREATE TABLE IF NOT EXISTS events (
   FOREIGN KEY (job_id) REFERENCES jobs(id)
 );
 
--- System settings, key/value (e.g. 'live_mode').
+-- System settings, key/value (e.g. 'onboarded').
 CREATE TABLE IF NOT EXISTS settings (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL

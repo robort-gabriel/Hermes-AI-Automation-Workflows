@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Read-only local dashboard server for Job Hunter.
 
-Serves dashboard.html and a handful of GET-only JSON endpoints backed
+Serves dashboard.html, its bundled fonts (assets/), the generated files under
+jobs/ (tailored resume PDFs), and a handful of GET-only JSON endpoints backed
 directly by the SQLite database. This server never mutates state: there is
 no /api/find, /api/tailor, or any other action endpoint, no subprocess calls,
 and no background pipeline thread. Every state transition (run/job status)
@@ -11,13 +12,30 @@ happens exclusively through `scripts/db.py`, called only by Hermes skills
 import json
 import sqlite3
 import urllib.parse
-from http.server import HTTPServer, BaseHTTPRequestHandler
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 DB_PATH = ROOT / "data" / "job-hunter.db"
 DASHBOARD_PATH = ROOT / "dashboard.html"
 PORT = 5301
+
+JOB_FILE_TYPES = {
+    ".pdf": "application/pdf",
+    ".json": "application/json; charset=utf-8",
+    ".md": "text/markdown; charset=utf-8",
+}
+ASSET_TYPES = {
+    ".woff2": "font/woff2",
+    ".txt": "text/plain; charset=utf-8",
+}
+# The page is one self-contained file: inline script/style, local fonts, and
+# fetches only to itself. Anything else (other origins, framing) is refused.
+PAGE_CSP = (
+    "default-src 'none'; script-src 'self' 'unsafe-inline'; "
+    "style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; "
+    "connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
+)
 
 
 def row_to_dict(row):
@@ -34,10 +52,10 @@ def fetch_runs(status=None):
     conn = get_conn()
     if status:
         rows = conn.execute(
-            "SELECT * FROM runs WHERE status = ? ORDER BY created_at DESC", (status,)
+            "SELECT * FROM runs WHERE status = ? ORDER BY created_at DESC, id DESC", (status,)
         ).fetchall()
     else:
-        rows = conn.execute("SELECT * FROM runs ORDER BY created_at DESC").fetchall()
+        rows = conn.execute("SELECT * FROM runs ORDER BY created_at DESC, id DESC").fetchall()
     out = []
     for r in rows:
         run = row_to_dict(r)
@@ -79,38 +97,57 @@ def fetch_job(job_id):
     return row_to_dict(row) if row else None
 
 
-def fetch_setting(key):
-    conn = get_conn()
-    row = conn.execute("SELECT value FROM settings WHERE key = ?", (key,)).fetchone()
-    conn.close()
-    return row["value"] if row else None
+def resolve_inside(base, parts):
+    """Resolve `parts` under `base`, or None if the result would land outside
+    it. A raw base.joinpath(*parts) lets /jobs/../../.env or an absolute-looking
+    segment escape the folder and read anything the process can access."""
+    base = base.resolve()
+    target = base.joinpath(*parts).resolve()
+    if target.is_relative_to(base) and target.is_file():
+        return target
+    return None
 
 
 class Handler(BaseHTTPRequestHandler):
-    def _json(self, payload, status=200):
-        body = json.dumps(payload, indent=2).encode("utf-8")
+    def _send(self, status, body, content_type, cache="no-store", csp=False):
         self.send_response(status)
-        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", cache)
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Referrer-Policy", "no-referrer")
+        if csp:
+            self.send_header("Content-Security-Policy", PAGE_CSP)
         self.end_headers()
         self.wfile.write(body)
+
+    def _json(self, payload, status=200):
+        self._send(status, json.dumps(payload, indent=2).encode("utf-8"), "application/json")
 
     def _not_found(self):
         self._json({"error": "not found"}, status=404)
 
+    def _serve_static(self, base, parts, types, cache):
+        path = resolve_inside(base, parts)
+        if path is None:
+            return False
+        content_type = types.get(path.suffix.lower())
+        if content_type is None:
+            return False
+        self._send(200, path.read_bytes(), content_type, cache=cache)
+        return True
+
     def do_GET(self):
         parsed = urllib.parse.urlparse(self.path)
-        parts = [p for p in parsed.path.split("/") if p]
+        # Decode each segment so names with spaces or accents resolve. Traversal
+        # tricks (%2e%2e, %5c, %2f) decode into real path parts and are then
+        # caught by resolve_inside's containment check.
+        parts = [urllib.parse.unquote(p) for p in parsed.path.split("/") if p]
         qs = urllib.parse.parse_qs(parsed.query)
 
         try:
             if parsed.path in ("/", "/index.html"):
-                body = DASHBOARD_PATH.read_bytes()
-                self.send_response(200)
-                self.send_header("Content-Type", "text/html; charset=utf-8")
-                self.send_header("Content-Length", str(len(body)))
-                self.end_headers()
-                self.wfile.write(body)
+                self._send(200, DASHBOARD_PATH.read_bytes(), "text/html; charset=utf-8", csp=True)
                 return
 
             if parts == ["api", "runs"]:
@@ -119,37 +156,21 @@ class Handler(BaseHTTPRequestHandler):
                 return
 
             if len(parts) == 3 and parts[:2] == ["api", "runs"]:
-                run_id = int(parts[2])
-                run = fetch_run(run_id)
+                run = fetch_run(int(parts[2]))
                 self._json(run) if run else self._not_found()
                 return
 
             if len(parts) == 3 and parts[:2] == ["api", "jobs"]:
-                job_id = int(parts[2])
-                job = fetch_job(job_id)
+                job = fetch_job(int(parts[2]))
                 self._json(job) if job else self._not_found()
                 return
 
-            if parts == ["api", "settings"]:
-                self._json({"live_mode": fetch_setting("live_mode") or "off"})
-                return
+            if len(parts) >= 2 and parts[0] == "jobs":
+                if self._serve_static(ROOT / "jobs", parts[1:], JOB_FILE_TYPES, "no-store"):
+                    return
 
-            # Serve static files from the jobs/ directory (resumes, etc.). Resolve
-            # and confirm containment before any read -- a raw ROOT.joinpath(*parts)
-            # lets a path like /jobs/../../.env or /jobs/../data/job-hunter.db escape
-            # the jobs/ folder and read anything on disk the process can access.
-            if parts[0] == "jobs" and len(parts) >= 2:
-                jobs_root = (ROOT / "jobs").resolve()
-                file_path = jobs_root.joinpath(*parts[1:]).resolve()
-                if file_path.is_relative_to(jobs_root) and file_path.is_file():
-                    content_types = {".md": "text/markdown; charset=utf-8", ".pdf": "application/pdf", ".json": "application/json; charset=utf-8"}
-                    ct = content_types.get(file_path.suffix, "application/octet-stream")
-                    body = file_path.read_bytes()
-                    self.send_response(200)
-                    self.send_header("Content-Type", ct)
-                    self.send_header("Content-Length", str(len(body)))
-                    self.end_headers()
-                    self.wfile.write(body)
+            if len(parts) >= 2 and parts[0] == "assets":
+                if self._serve_static(ROOT / "assets", parts[1:], ASSET_TYPES, "public, max-age=86400"):
                     return
 
             self._not_found()
@@ -170,7 +191,8 @@ class Handler(BaseHTTPRequestHandler):
 def main():
     if not DB_PATH.exists():
         print(f"No database at {DB_PATH} -- run: python3 scripts/db.py init")
-    server = HTTPServer(("127.0.0.1", PORT), Handler)
+    server = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
+    server.daemon_threads = True
     print(f"Job Hunter dashboard (read-only) at http://127.0.0.1:{PORT}/")
     try:
         server.serve_forever()

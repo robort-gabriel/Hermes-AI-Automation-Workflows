@@ -13,17 +13,23 @@ What it does, in order:
      currently active, so chat works without an extra manual step -- but
      never overwrites a model already configured on job-hunter.
   5. Write this project's SOUL.md (persona/scope) into the profile.
-  6. Copy the job-finder / resume-editor skill specs into the profile.
-  7. Seed resume-library/resume.md from the example template if missing.
+  6. Copy the onboarding / job-finder / resume-editor / resume-pdf-designer
+     skills into the profile.
+  7. Check this machine can read and make PDFs (resumes are PDF only).
   8. Create .env from .env.example if missing, with PROJECT_ROOT set.
-  9. Initialize the database if it doesn't exist yet (never re-inits one
-     that already has data).
-  10. Create the daily job-finder cron job if it doesn't already exist,
-      paused and gated by live_mode (off by default).
+  9. Create the database if it doesn't exist yet; if it does, run the
+     non-destructive migration (never re-inits one that already has data).
+  10. Create the daily job-finder cron job if it doesn't already exist, paused
+      (turn it on with `hermes cron resume`), and keep an existing one's prompt
+      in sync with this file.
 
-Never touches: resume-library/resume.md content (if it already exists),
-config/*.md content, or any existing job/run data.
+The first chat after install runs the onboarding skill (resume PDF, roles,
+companies) -- this script deliberately does not seed any resume or config.
+
+Never touches: resume-library/resume.pdf, config/*.md content, or any
+existing job/run data.
 """
+import json
 import shutil
 import subprocess
 import sys
@@ -34,24 +40,22 @@ PROFILE_NAME = "job-hunter"
 CRON_JOB_NAME = "Job Hunter Daily Search"
 CRON_SCHEDULE = "0 8 * * *"
 CRON_PROMPT = (
-    "Autonomous live-mode run. Do NOT source .env: it can contain values that "
+    "Daily Job Hunter search. Do NOT source .env: it can contain values that "
     "are not shell-safe. Read ONLY PROJECT_ROOT from the local .env with a "
     "safe parser, then cd into it. If it is absent or inaccessible, stop and "
     "report that configuration error. Never use a profile directory or a "
-    "machine-specific path. First run: python scripts/db.py get-setting --key "
-    "live_mode. If its value is not exactly on, exit silently without "
-    "changing anything. Live mode runs one full research pass per role "
-    "default listed in config/search-config.md -- for each, start a run with "
-    "python scripts/db.py start-run using that role plus the seniority/"
-    "location defaults, mark it researching, load the job-finder skill, log "
-    "matches, then mark-jobs-found (or mark-run-rejected if nothing "
-    "qualified), before moving to the next role default. Do not tailor "
-    "resumes or mark any run presented in this job, that is a separate "
-    "stage. On an actual failure, mark only that run failed with a clear "
-    "reason via mark-run-failed. Return a concise local summary covering "
-    "both roles."
+    "machine-specific path. First run: python scripts/check-setup.py. If "
+    "configured is not true, stop and report that setup is unfinished; do "
+    "nothing else. Otherwise load the job-finder skill and run one full "
+    "research pass per Role line in config/search-config.md, one role at a "
+    "time, each taken to completion before the next. Only jobs posted within "
+    "the freshness window are kept, and only from company career pages, never "
+    "job boards. Do not tailor resumes or mark any run presented in this job; "
+    "that is a separate stage. On an actual failure, mark only that run failed "
+    "with a clear reason via mark-run-failed. Return a concise local summary "
+    "covering every role."
 )
-CRON_PAUSED_REASON = "shipped paused; enable by setting live_mode=on via scripts/db.py set-setting"
+CRON_PAUSED_REASON = "created paused; turn on with: hermes -p job-hunter cron resume <job id>"
 
 
 def say(msg):
@@ -227,27 +231,39 @@ def ensure_config_yaml(profile_dir, hermes_home):
 def ensure_soul(profile_dir):
     src = ROOT / "hermes-skills" / "SOUL.md"
     dst = profile_dir / "SOUL.md"
-    dst.write_text(src.read_text())
+    shutil.copyfile(src, dst)
     say("Wrote profile SOUL.md (persona / scope)")
 
 
+SKILL_NAMES = ("onboarding", "job-finder", "resume-editor", "resume-pdf-designer")
+
+
 def ensure_skills(profile_dir):
-    for name in ("job-finder", "resume-editor"):
+    for name in SKILL_NAMES:
         src = ROOT / "hermes-skills" / name / "SKILL.md"
         dst_dir = profile_dir / "skills" / name
         dst_dir.mkdir(parents=True, exist_ok=True)
-        (dst_dir / "SKILL.md").write_text(src.read_text())
-    say("Synced job-finder and resume-editor skills into the profile")
+        shutil.copyfile(src, dst_dir / "SKILL.md")
+    say(f"Synced {', '.join(SKILL_NAMES)} skills into the profile")
 
 
-def ensure_resume_placeholder():
-    resume = ROOT / "resume-library" / "resume.md"
-    example = ROOT / "resume-library" / "resume.example.md"
-    if not resume.exists() and example.exists():
-        resume.write_text(example.read_text())
-        say("Seeded resume-library/resume.md from the example template -- replace it with your real CV")
+def check_pdf_tooling():
+    """Resumes are PDF only, so this machine needs a PDF reader and a PDF maker.
+    Only warns -- the first chat's onboarding repeats the hint if it matters."""
+    result = subprocess.run(
+        [sys.executable, str(ROOT / "scripts" / "pdf-tools.py"), "check"],
+        capture_output=True, text=True, encoding="utf-8", errors="replace",
+    )
+    try:
+        report = json.loads(result.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        warn("Could not check PDF tooling.")
+        return
+    if report.get("ok"):
+        say(f"PDF tooling ready (read: {', '.join(report['extract'])}; make: {', '.join(report['render'])})")
     else:
-        say("resume-library/resume.md already exists -- left as-is")
+        for hint in report.get("hints", []):
+            warn(hint)
 
 
 def ensure_env_file():
@@ -272,25 +288,55 @@ def ensure_env_file():
 
 
 def ensure_database():
+    db_script = str(ROOT / "scripts" / "db.py")
     db_path = ROOT / "data" / "job-hunter.db"
     if db_path.exists():
-        say("Database already exists -- left as-is (not re-initialized)")
+        result = subprocess.run([sys.executable, db_script, "migrate"])
+        if result.returncode != 0:
+            raise RuntimeError("Database migration failed")
+        say("Database already exists -- migrated in place, no data removed")
         return
     say("Initializing database...")
-    result = subprocess.run([sys.executable, str(ROOT / "scripts" / "db.py"), "init"])
+    result = subprocess.run([sys.executable, db_script, "init"])
     if result.returncode != 0:
         raise RuntimeError("Database initialization failed")
-    subprocess.run([
-        sys.executable, str(ROOT / "scripts" / "db.py"),
-        "set-setting", "--key", "live_mode", "--value", "off",
-    ])
-    say("Database initialized, live_mode=off")
+    say("Database initialized")
 
 
-def ensure_cron():
-    code, out, err = run_hermes(["-p", PROFILE_NAME, "cron", "list", "--all"])
-    if code == 0 and CRON_JOB_NAME in (out or ""):
-        say(f"Cron job '{CRON_JOB_NAME}' already exists -- left as-is")
+def existing_cron_job(profile_dir):
+    """The managed cron job (a dict from the profile's own jobs.json), or None."""
+    try:
+        data = json.loads((profile_dir / "cron" / "jobs.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    for job in data.get("jobs", []):
+        if job.get("name") == CRON_JOB_NAME:
+            return job
+    return None
+
+
+def ensure_cron(profile_dir):
+    existing = existing_cron_job(profile_dir)
+    if existing and "live_mode" in (existing.get("paused_reason") or ""):
+        # Legacy job from before live_mode was removed. Its stored pause reason
+        # can't be edited, so recreate it (still paused). Only ever done while it
+        # carries that old reason, so a job the user has since enabled is untouched.
+        code, out, err = run_hermes(["-p", PROFILE_NAME, "cron", "remove", existing["id"]])
+        if code != 0:
+            warn(f"Could not replace the old cron job: {err or out}")
+            return
+        say("Replaced the old daily-search job (it referenced the removed live_mode)")
+        existing = None
+    if existing:
+        job_id = existing["id"]
+        if existing.get("prompt") == CRON_PROMPT:
+            say(f"Cron job '{CRON_JOB_NAME}' already exists and is up to date -- left as-is")
+            return
+        code, out, err = run_hermes(["-p", PROFILE_NAME, "cron", "edit", job_id, "--prompt", CRON_PROMPT])
+        if code == 0:
+            say(f"Cron job '{CRON_JOB_NAME}' updated to the current instructions (its on/off state is unchanged)")
+        else:
+            warn(f"Could not update the cron job's instructions: {err or out}")
         return
     say("Creating daily job-finder cron job (paused)...")
     code, out, err = run_hermes([
@@ -306,7 +352,7 @@ def ensure_cron():
         warn(f"Could not create the cron job automatically: {err or out}")
         warn("You can create it later from chat, or re-run this installer.")
         return
-    say("Cron job created, paused. It will not run until you set live_mode=on.")
+    say("Cron job created, paused. Turn it on later with: hermes -p job-hunter cron resume <job id>")
 
 
 def main():
@@ -317,21 +363,22 @@ def main():
     ensure_config_yaml(profile_dir, hermes_home)
     ensure_soul(profile_dir)
     ensure_skills(profile_dir)
-    ensure_resume_placeholder()
+    check_pdf_tooling()
     ensure_env_file()
     ensure_database()
-    ensure_cron()
+    ensure_cron(profile_dir)
 
     print()
     say("Setup complete. Next steps:")
-    print(f"  1. Replace resume-library/resume.md with your real CV.")
-    print(f"  2. Edit config/target-companies.md and config/search-config.md.")
-    print(f"  3. Chat with it: hermes -p {PROFILE_NAME} chat")
-    print(f"     (try /model first if you see an inference error -- pick any")
-    print(f"      available model, free tiers included)")
-    print(f"  4. Try: \"find jobs\" to test a manual run before enabling live_mode.")
-    print(f"  5. Dashboard: python scripts/dashboard-server.py, then open")
-    print(f"     http://127.0.0.1:5301/")
+    print(f"  1. Open a chat with the job-hunter profile:")
+    print(f"       hermes -p {PROFILE_NAME} chat")
+    print(f"     (or pick the job-hunter profile in the Hermes app)")
+    print(f"  2. Say hi. The first chat walks you through setup: your resume PDF,")
+    print(f"     the roles you want, and your target companies.")
+    print(f"  3. If you see an inference error, type /model and pick any available")
+    print(f"     model (free tiers included).")
+    print(f"  4. The beginner's guide with copy-and-paste prompts is at")
+    print(f"     docs/Job-Hunter-User-Guide.pdf")
 
 
 if __name__ == "__main__":

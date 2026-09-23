@@ -1,245 +1,637 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-scheme="light">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#F3EADB">
 <title>Job Hunter</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='15' fill='%23D2532B'/%3E%3Cpath d='M38 13v25c0 8-5 13-12 13-4 0-8-1-10-3l4-8c1 1 3 2 5 2 3 0 4-2 4-5V13z' fill='%23fff'/%3E%3C/svg%3E">
+<script>
+/* Resolve the colour scheme before first paint so there is no flash. */
+(function () {
+  var pref = "auto";
+  try { pref = localStorage.getItem("jh-theme") || "auto"; } catch (e) {}
+  var q = new URLSearchParams(location.search).get("theme");
+  if (q === "light" || q === "dark" || q === "auto") pref = q;
+  var mq = window.matchMedia("(prefers-color-scheme: dark)");
+  function apply() {
+    var dark = pref === "dark" || (pref === "auto" && mq.matches);
+    document.documentElement.dataset.scheme = dark ? "dark" : "light";
+    document.documentElement.dataset.pref = pref;
+    var m = document.querySelector('meta[name="theme-color"]');
+    if (m) m.content = dark ? "#16120E" : "#F3EADB";
+  }
+  window.__theme = {
+    get: function () { return pref; },
+    set: function (p) { pref = p; try { localStorage.setItem("jh-theme", p); } catch (e) {} apply(); }
+  };
+  apply();
+  if (mq.addEventListener) mq.addEventListener("change", apply);
+})();
+</script>
 <style>
-  :root {
-    --bg: #f6f7f9;
-    --card: #ffffff;
-    --border: #e3e6ea;
-    --text: #1c2126;
-    --muted: #667085;
-    --accent: #2f6fed;
-    --good: #1a7f37;
-    --warn: #b45309;
-    --bad: #c0342c;
-  }
-  * { box-sizing: border-box; }
-  body {
-    margin: 0;
-    font-family: -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
-    background: var(--bg);
-    color: var(--text);
-  }
-  header {
-    padding: 20px 24px 12px;
-    border-bottom: 1px solid var(--border);
-    background: var(--card);
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    flex-wrap: wrap;
-    gap: 8px;
-  }
-  header h1 { font-size: 18px; margin: 0; }
-  header .tag {
-    font-size: 12px;
-    color: var(--muted);
-  }
-  #status-bar {
-    font-size: 12px;
-    color: var(--muted);
-    padding: 8px 24px;
-  }
-  main {
-    max-width: 960px;
-    margin: 0 auto;
-    padding: 16px;
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-  }
-  .run {
-    background: var(--card);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    overflow: hidden;
-  }
-  .run-head {
-    padding: 14px 16px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    cursor: pointer;
-    flex-wrap: wrap;
-  }
-  .run-head:hover { background: #fafbfc; }
-  .run-title { font-weight: 600; font-size: 14px; }
-  .run-sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
-  .badge {
-    display: inline-block;
-    font-size: 11px;
-    font-weight: 600;
-    padding: 3px 9px;
-    border-radius: 999px;
-    text-transform: uppercase;
-    letter-spacing: .02em;
-    white-space: nowrap;
-  }
-  .badge-new { background: #eef1f5; color: var(--muted); }
-  .badge-researching { background: #e8f0fe; color: var(--accent); }
-  .badge-jobs_found { background: #e8f0fe; color: var(--accent); }
-  .badge-resume_ready { background: #fff6e5; color: var(--warn); }
-  .badge-presented { background: #e6f4ea; color: var(--good); }
-  .badge-rejected, .badge-failed { background: #fdecea; color: var(--bad); }
-  .run-body {
-    border-top: 1px solid var(--border);
-    padding: 12px 16px 16px;
-    display: none;
-  }
-  .run-body.open { display: block; }
-  table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 4px; }
-  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
-  th { color: var(--muted); font-weight: 600; font-size: 11px; text-transform: uppercase; }
-  td a { color: var(--accent); text-decoration: none; }
-  td a:hover { text-decoration: underline; }
-  .score { font-weight: 600; }
-  .empty { color: var(--muted); font-size: 13px; padding: 8px 0; }
-  .events { margin-top: 14px; }
-  .events h4 { font-size: 12px; color: var(--muted); text-transform: uppercase; margin: 0 0 6px; }
-  .event-row { font-size: 12px; color: var(--muted); padding: 3px 0; display: flex; gap: 8px; }
-  .event-row .t { flex: 0 0 140px; color: #99a1ab; }
-  .no-runs { text-align: center; color: var(--muted); padding: 60px 20px; font-size: 14px; }
+/* ---------- Fonts (bundled, served from /assets, no internet needed) ---------- */
+@font-face { font-family: "Fraunces"; font-style: normal; font-weight: 600; font-display: swap; src: url(/assets/fonts/fraunces-latin-600-normal.woff2) format("woff2"); }
+@font-face { font-family: "Fraunces"; font-style: italic; font-weight: 500; font-display: swap; src: url(/assets/fonts/fraunces-latin-500-italic.woff2) format("woff2"); }
+@font-face { font-family: "Instrument Sans"; font-weight: 400; font-display: swap; src: url(/assets/fonts/instrument-sans-latin-400-normal.woff2) format("woff2"); }
+@font-face { font-family: "Instrument Sans"; font-weight: 500; font-display: swap; src: url(/assets/fonts/instrument-sans-latin-500-normal.woff2) format("woff2"); }
+@font-face { font-family: "Instrument Sans"; font-weight: 600; font-display: swap; src: url(/assets/fonts/instrument-sans-latin-600-normal.woff2) format("woff2"); }
+@font-face { font-family: "DM Mono"; font-weight: 400; font-display: swap; src: url(/assets/fonts/dm-mono-latin-400-normal.woff2) format("woff2"); }
+@font-face { font-family: "DM Mono"; font-weight: 500; font-display: swap; src: url(/assets/fonts/dm-mono-latin-500-normal.woff2) format("woff2"); }
+
+/* ---------- Design tokens: warm paper (light) and lamp-lit ink (dark) ---------- */
+:root {
+  --display: "Fraunces", "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+  --body: "Instrument Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --mono: "DM Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+
+  --paper: #F3EADB;  --paper-2: #EADFCB;  --card: #FBF6EC;  --card-2: #F7F0E2;  --row-hover: #F1E8D6;
+  --ink: #1F1A14;    --ink-2: #4B4136;    --muted: #756A5C;
+  --line: #E0D3BD;   --line-strong: #CDBD9F;
+  --accent: #D2532B; --brand: #B8431D;    --on-brand: #FFFFFF;
+  --good: #2C6A4C;   --good-bg: #DDEBDD;
+  --info: #2E4F6D;   --info-bg: #DCE5EC;
+  --warn: #8D5A0E;   --warn-bg: #F5E5C0;
+  --bad: #A2352A;    --bad-bg: #F4D9D2;
+  --glow: rgba(210, 83, 43, .10);  --glow-2: rgba(214, 170, 90, .16);
+  --shadow: 0 1px 0 var(--line), 0 14px 30px -22px rgba(60, 40, 20, .45);
+  --grain: .06;
+  --grain-img: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 .6 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  --gutter: clamp(16px, 4vw, 40px);
+}
+:root[data-scheme="dark"] {
+  --paper: #16120E;  --paper-2: #1E1913;  --card: #201B15;  --card-2: #26201A;  --row-hover: #2B241C;
+  --ink: #F3EADB;    --ink-2: #D2C6B3;    --muted: #A39684;
+  --line: #372F26;   --line-strong: #4C4034;
+  --accent: #F0703F; --brand: #F0703F;    --on-brand: #1C0F08;
+  --good: #7CC9A0;   --good-bg: #1E3429;
+  --info: #94B6D3;   --info-bg: #1E2C39;
+  --warn: #E6B865;   --warn-bg: #3A2F17;
+  --bad: #F09284;    --bad-bg: #3E211C;
+  --glow: rgba(240, 112, 63, .10);  --glow-2: rgba(230, 184, 101, .06);
+  --shadow: 0 1px 0 rgba(0, 0, 0, .35), 0 16px 34px -22px rgba(0, 0, 0, .8);
+  --grain: .10;
+  --grain-img: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 .5 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* ---------- Base ---------- */
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+body {
+  margin: 0; min-height: 100vh; min-height: 100dvh;
+  font: 400 15px/1.55 var(--body); color: var(--ink);
+  background-color: var(--paper);
+  background-image:
+    radial-gradient(900px 420px at 6% -6%, var(--glow), transparent 62%),
+    radial-gradient(760px 420px at 100% 0%, var(--glow-2), transparent 58%);
+  background-repeat: no-repeat;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+body::before {
+  content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background-image: var(--grain-img); opacity: var(--grain);
+}
+.shell { position: relative; z-index: 1; max-width: 1140px; margin: 0 auto; padding: 0 var(--gutter) 40px; }
+a { color: inherit; }
+:focus-visible { outline: 2px solid var(--brand); outline-offset: 3px; border-radius: 6px; }
+.sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+.skip { position: absolute; left: -999px; top: 8px; background: var(--ink); color: var(--paper); padding: 8px 14px; border-radius: 8px; z-index: 10; }
+.skip:focus { left: 12px; }
+button { font: inherit; color: inherit; }
+
+/* ---------- Masthead ---------- */
+.masthead { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: clamp(18px, 3.2vw, 32px) 0 16px; border-bottom: 1px solid var(--line-strong); }
+.brand { display: flex; align-items: center; gap: 13px; min-width: 0; }
+.mark { flex: none; width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; background: var(--accent); color: #fff; font: italic 500 27px/1 var(--display); box-shadow: 0 2px 0 rgba(0, 0, 0, .18); transform: rotate(-4deg); }
+.wordmark { font: 600 clamp(24px, 3.4vw, 32px)/1 var(--display); letter-spacing: -.012em; margin: 0; }
+.tagline { margin-top: 5px; font: 400 12px/1 var(--mono); color: var(--muted); letter-spacing: .02em; }
+.controls { display: flex; align-items: center; gap: 10px; flex: none; }
+.live { display: inline-flex; align-items: center; gap: 9px; height: 38px; padding: 0 14px; border: 1px solid var(--line-strong); border-radius: 999px; background: var(--card); font: 400 12px/1 var(--mono); color: var(--ink-2); white-space: nowrap; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--good); animation: pulse 2.6s ease-out infinite; }
+.live.err .dot { background: var(--bad); animation: none; }
+.theme-btn { width: 38px; height: 38px; border-radius: 50%; border: 1px solid var(--line-strong); background: var(--card); cursor: pointer; display: grid; place-items: center; color: var(--ink-2); transition: transform .2s, border-color .2s; }
+.theme-btn:hover { transform: rotate(18deg); border-color: var(--brand); color: var(--ink); }
+.theme-btn svg { width: 18px; height: 18px; }
+
+/* ---------- Summary ---------- */
+.stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin: 26px 0 6px; }
+.stat { position: relative; background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 18px 20px 16px; box-shadow: var(--shadow); overflow: hidden; }
+.stat::before { content: ""; position: absolute; left: 20px; top: 0; width: 34px; height: 4px; border-radius: 0 0 4px 4px; background: var(--accent); }
+.stat-label { font: 500 11px/1 var(--mono); letter-spacing: .09em; text-transform: uppercase; color: var(--muted); margin-top: 6px; }
+.stat-num { font: 600 clamp(36px, 5.2vw, 54px)/1 var(--display); margin: 14px 0 6px; letter-spacing: -.02em; font-variant-numeric: lining-nums tabular-nums; }
+.stat-num.text { font-size: clamp(24px, 3.2vw, 34px); margin: 20px 0 8px; font-style: normal; }
+.stat-sub { font-size: 13px; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* ---------- Section heading ---------- */
+.section-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 34px 0 14px; }
+.section-head h2 { margin: 0; font: 600 clamp(22px, 2.8vw, 27px)/1.1 var(--display); letter-spacing: -.01em; }
+.section-head h2 i { font-weight: 500; color: var(--brand); }
+.hint { font: 400 12px/1.3 var(--mono); color: var(--muted); }
+
+/* ---------- Banner ---------- */
+.banner { display: flex; gap: 12px; align-items: flex-start; margin: 18px 0 0; padding: 14px 16px; border-radius: 14px; font-size: 14px; line-height: 1.5; border: 1px solid transparent; }
+.banner.bad { background: var(--bad-bg); color: var(--bad); border-color: color-mix(in srgb, var(--bad) 25%, transparent); }
+.banner.warn { background: var(--warn-bg); color: var(--warn); }
+.banner b { font-weight: 600; }
+
+/* ---------- Run card ---------- */
+.run { background: var(--card); border: 1px solid var(--line); border-radius: 20px; margin-bottom: 16px; box-shadow: var(--shadow); }
+.run-title { margin: 0; font: inherit; }
+.run-head { width: 100%; display: grid; grid-template-columns: minmax(0, 1fr) auto auto 30px; align-items: center; gap: 8px 20px; padding: 20px 22px; background: none; border: 0; text-align: left; cursor: pointer; border-radius: 20px; }
+.run-head:hover .run-role { color: var(--brand); }
+.run-role { font: 600 clamp(20px, 2.8vw, 26px)/1.12 var(--display); letter-spacing: -.01em; transition: color .2s; overflow-wrap: anywhere; }
+.run-meta { display: flex; flex-wrap: wrap; gap: 2px 12px; margin-top: 6px; font-size: 13px; color: var(--muted); }
+.run-meta span + span::before { content: ""; display: inline-block; width: 3px; height: 3px; border-radius: 50%; background: var(--line-strong); margin: 0 12px 2px 0; vertical-align: middle; }
+.run-counts { font: 400 13px/1.2 var(--mono); color: var(--ink-2); text-align: right; white-space: nowrap; }
+.run-counts b { font: 600 22px/1 var(--display); color: var(--ink); margin-right: 3px; }
+.run-counts span + span { margin-left: 12px; }
+.chev { width: 30px; height: 30px; border-radius: 50%; border: 1px solid var(--line-strong); display: grid; place-items: center; color: var(--ink-2); transition: transform .3s cubic-bezier(.3, .7, .2, 1), background .2s; }
+.chev svg { width: 14px; height: 14px; }
+.run-head[aria-expanded="true"] .chev { transform: rotate(180deg); background: var(--paper-2); }
+.run-body { padding: 4px 22px 24px; border-top: 1px dashed var(--line-strong); }
+.run-body[hidden] { display: none; }
+
+/* ---------- Chips ---------- */
+.chip { display: inline-flex; align-items: center; gap: 7px; height: 26px; padding: 0 11px; border-radius: 999px; font: 500 11.5px/1 var(--mono); letter-spacing: .03em; white-space: nowrap; }
+.chip::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex: none; }
+.chip.good { background: var(--good-bg); color: var(--good); }
+.chip.info { background: var(--info-bg); color: var(--info); }
+.chip.warn { background: var(--warn-bg); color: var(--warn); }
+.chip.bad { background: var(--bad-bg); color: var(--bad); }
+.chip.muted { background: var(--paper-2); color: var(--muted); }
+.chip.working::before { animation: blink 1.3s ease-in-out infinite; }
+.chip.plain::before { display: none; }
+
+/* ---------- Pipeline rail ---------- */
+.rail { display: flex; list-style: none; margin: 22px 0 6px; padding: 0; }
+.rail li { position: relative; flex: 1 1 0; min-width: 0; padding: 22px 6px 0 0; font: 500 10.5px/1.25 var(--mono); letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
+.rail li::before { content: ""; position: absolute; top: 3px; left: 0; width: 12px; height: 12px; border-radius: 50%; background: var(--card); border: 2px solid var(--line-strong); z-index: 1; }
+.rail li::after { content: ""; position: absolute; top: 8px; left: 14px; right: 2px; height: 2px; background: var(--line-strong); border-radius: 2px; }
+.rail li:last-child::after { display: none; }
+.rail .l-short { display: none; }
+.rail li.done { color: var(--ink-2); }
+.rail li.done::before { background: var(--accent); border-color: var(--accent); }
+.rail li.done::after { background: var(--accent); }
+.rail li.current { color: var(--ink); }
+.rail li.current::before { background: var(--accent); border-color: var(--accent); box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 22%, transparent); }
+
+.note { display: flex; gap: 10px; margin: 18px 0 0; padding: 12px 14px; border-radius: 12px; font-size: 14px; line-height: 1.5; }
+.note.bad { background: var(--bad-bg); color: var(--bad); }
+.note.muted { background: var(--paper-2); color: var(--ink-2); }
+
+/* ---------- Filters ---------- */
+.filters { display: flex; flex-wrap: wrap; gap: 8px; margin: 20px 0 4px; }
+.filter { height: 36px; padding: 0 15px; border-radius: 999px; border: 1px solid var(--line-strong); background: transparent; color: var(--ink-2); font: 500 13px/1 var(--body); cursor: pointer; transition: background .15s, color .15s, border-color .15s; }
+.filter:hover { border-color: var(--brand); color: var(--ink); }
+.filter[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: var(--paper); }
+.filter .n { font: 400 12px var(--mono); margin-left: 7px; opacity: .7; }
+
+/* ---------- Jobs table ---------- */
+.jobs { width: 100%; border-collapse: separate; border-spacing: 0; margin-top: 8px; }
+.jobs th { text-align: left; font: 500 11px/1 var(--mono); letter-spacing: .09em; text-transform: uppercase; color: var(--muted); padding: 14px 12px 12px; border-bottom: 1px solid var(--line-strong); white-space: nowrap; }
+.jobs td { padding: 15px 12px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+.jobs tbody tr { transition: background .15s; }
+.jobs tbody tr:hover { background: var(--row-hover); }
+.jobs tbody tr:last-child td { border-bottom: 0; }
+.c-match { width: 128px; }
+.c-loc { width: 16%; color: var(--ink-2); font-size: 14px; }
+.c-posted { width: 122px; }
+.c-status { width: 132px; }
+.c-actions { width: 216px; }
+.co { font: 500 11.5px/1.2 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.ti { font: 600 16px/1.3 var(--body); margin-top: 3px; overflow-wrap: break-word; }
+.co { overflow-wrap: break-word; }
+.score { display: inline-flex; align-items: center; gap: 11px; }
+.score-num { font: 600 26px/1 var(--display); min-width: 2ch; font-variant-numeric: lining-nums tabular-nums; }
+.meter { position: relative; width: 52px; height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; }
+.meter::after { content: ""; position: absolute; inset: 0 auto 0 0; width: calc(var(--v) * 1%); background: currentColor; border-radius: 3px; }
+.tier-strong { color: var(--good); } .tier-good { color: var(--info); } .tier-stretch { color: var(--warn); } .tier-weak { color: var(--bad); } .tier-none { color: var(--muted); }
+.posted-rel { display: flex; align-items: center; gap: 8px; font-weight: 500; font-size: 14px; }
+.pdot { width: 7px; height: 7px; border-radius: 50%; background: var(--line-strong); flex: none; }
+.fresh .pdot { background: var(--good); box-shadow: 0 0 0 3px color-mix(in srgb, var(--good) 22%, transparent); }
+.aging { color: var(--ink-2); }
+.posted-abs { font: 400 12px/1.2 var(--mono); color: var(--muted); margin: 3px 0 0 15px; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 36px; padding: 0 13px; border-radius: 10px; border: 1px solid var(--line-strong); background: transparent; color: var(--ink); font: 600 13px/1 var(--body); text-decoration: none; transition: transform .15s, background .15s, border-color .15s; }
+.btn:hover { transform: translateY(-1px); border-color: var(--brand); }
+.btn.primary { background: var(--brand); border-color: var(--brand); color: var(--on-brand); }
+.btn.primary:hover { filter: brightness(1.08); }
+.btn svg { width: 14px; height: 14px; }
+.none { color: var(--muted); font-size: 13px; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 14px 2px 0; font: 400 12px/1.3 var(--mono); color: var(--muted); }
+.legend span::before { content: ""; display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: currentColor; margin-right: 7px; }
+.empty-filter { padding: 26px 0 8px; color: var(--muted); }
+
+/* ---------- Timeline ---------- */
+.tl { margin-top: 22px; }
+.tl summary { list-style: none; cursor: pointer; display: inline-flex; align-items: center; gap: 10px; padding: 6px 0; font: 500 11.5px/1 var(--mono); letter-spacing: .09em; text-transform: uppercase; color: var(--muted); }
+.tl summary::-webkit-details-marker { display: none; }
+.tl summary::before { content: ""; width: 7px; height: 7px; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: rotate(-45deg); transition: transform .2s; margin-right: 2px; }
+.tl[open] summary::before { transform: rotate(45deg); }
+.tl-list { list-style: none; margin: 10px 0 0 4px; padding: 0 0 0 20px; border-left: 1px solid var(--line-strong); max-height: 240px; overflow: auto; }
+.tl-item { position: relative; display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 4px 14px; padding: 6px 0; font-size: 13.5px; }
+.tl-item::before { content: ""; position: absolute; left: -25px; top: 13px; width: 9px; height: 9px; border-radius: 50%; background: var(--card); border: 2px solid var(--accent); }
+.tl-time { font: 400 12px/1.6 var(--mono); color: var(--muted); }
+.tl-msg b { font-weight: 600; }
+.tl-msg span { color: var(--ink-2); }
+
+/* ---------- Empty / loading ---------- */
+.empty { text-align: center; padding: clamp(40px, 9vw, 80px) 20px; background: var(--card); border: 1px dashed var(--line-strong); border-radius: 20px; }
+.empty h3 { margin: 18px 0 8px; font: 600 clamp(22px, 3vw, 28px)/1.15 var(--display); }
+.empty p { margin: 0 auto; max-width: 46ch; color: var(--ink-2); }
+.empty code { font: 500 13.5px var(--mono); background: var(--paper-2); padding: 3px 8px; border-radius: 6px; white-space: nowrap; }
+.empty-art { display: grid; gap: 7px; width: 92px; margin: 0 auto; }
+.empty-art i { display: block; height: 8px; border-radius: 4px; background: var(--line-strong); }
+.empty-art i:nth-child(1) { width: 100%; background: var(--accent); } .empty-art i:nth-child(2) { width: 78%; } .empty-art i:nth-child(3) { width: 54%; }
+.skeleton { height: 92px; border-radius: 20px; margin-bottom: 16px; border: 1px solid var(--line); background: linear-gradient(100deg, var(--card) 30%, var(--card-2) 50%, var(--card) 70%) 0 0 / 220% 100%; animation: shimmer 1.4s linear infinite; }
+.foot { margin-top: 44px; padding-top: 18px; border-top: 1px solid var(--line-strong); display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 24px; font: 400 12px/1.5 var(--mono); color: var(--muted); }
+
+/* ---------- Motion ---------- */
+@keyframes rise { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+@keyframes pulse { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--good) 55%, transparent); } 70%, 100% { box-shadow: 0 0 0 8px transparent; } }
+@keyframes blink { 50% { opacity: .25; } }
+@keyframes shimmer { to { background-position: -220% 0; } }
+.reveal { animation: rise .65s cubic-bezier(.2, .7, .2, 1) both; animation-delay: calc(var(--i, 0) * 75ms); }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+
+/* ---------- Responsive ---------- */
+.job-status, .job-loc { display: none; }
+.job-loc { margin-top: 5px; font-size: 13px; color: var(--ink-2); }
+.job-status { margin-top: 9px; }
+@media (max-width: 1020px) {
+  .jobs .c-loc, .jobs .c-status { display: none; }
+  .job-status, .job-loc { display: block; }
+  .c-actions { width: 176px; }
+}
+@media (max-width: 860px) {
+  .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 760px) {
+  /* The table becomes a stack of cards. */
+  .jobs thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  .jobs, .jobs tbody { display: block; }
+  .jobs tbody tr { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "job match" "loc posted" "actions actions"; gap: 12px 14px; align-items: start; margin-top: 12px; padding: 16px; background: var(--card-2); border: 1px solid var(--line); border-radius: 16px; }
+  .jobs td { display: block; width: auto; padding: 0; border: 0; min-width: 0; }
+  .jobs td.c-status { display: none; }
+  .jobs td.c-loc { display: block; }
+  .job-loc { display: none; }
+  .jobs tbody tr:hover { background: var(--card-2); }
+  .c-job { grid-area: job; } .c-match { grid-area: match; justify-self: end; } .c-loc { grid-area: loc; font-size: 13.5px; align-self: center; }
+  .c-posted { grid-area: posted; justify-self: end; text-align: right; align-self: center; }
+  .score { flex-direction: column; align-items: flex-end; gap: 8px; }
+  .posted-rel { justify-content: flex-end; } .posted-abs { margin-right: 0; margin-left: 0; }
+  .c-actions { grid-area: actions; }
+  .actions { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); }
+  .btn { min-height: 44px; padding: 0 16px; }
+  .filter { height: 40px; }
+  .run-head { grid-template-columns: minmax(0, 1fr) 30px; grid-template-areas: "main chev" "counts status"; padding: 18px; gap: 14px 12px; }
+  .run-main { grid-area: main; } .run-counts { grid-area: counts; text-align: left; } .run-head .chip { grid-area: status; justify-self: end; } .chev { grid-area: chev; }
+  .run-body { padding: 4px 16px 20px; }
+  .tl-item { grid-template-columns: 1fr; gap: 0; }
+}
+@media (max-width: 560px) {
+  .tagline { display: none; }
+  .live { padding: 0 12px; }
+  .run-meta span + span::before { display: none; }
+  .run-meta { gap: 2px 14px; }
+  .stat { padding: 16px 16px 14px; } .stat::before { left: 16px; }
+  .rail li { font-size: 9.5px; letter-spacing: .02em; padding-right: 2px; }
+  .foot { flex-direction: column; }
+}
+@media (max-width: 460px) {
+  .live .lbl { display: none; }
+  .rail .l-long { display: none; } .rail .l-short { display: inline; }
+  .rail li { font-size: 10px; }
+}
+@media (max-width: 560px) {
+  .stat-sub { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+}
+@media (max-width: 380px) {
+  .stats { gap: 10px; } .stat-sub { font-size: 12px; }
+  .wordmark { white-space: nowrap; }
+  .live { padding: 0 13px; }
+  .live .t { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .wordmark { font-size: 22px; } .mark { width: 34px; height: 34px; font-size: 22px; }
+}
+@media print {
+  body::before, .controls, .filters, .foot { display: none; }
+  .run-body[hidden] { display: none; }
+  body { background: #fff; }
+}
 </style>
 </head>
 <body>
-<header>
-  <h1>Job Hunter</h1>
-  <span class="tag" id="header-tag">read-only dashboard</span>
-</header>
-<div id="status-bar">Loading…</div>
-<main id="runs"></main>
+<a class="skip" href="#runs">Skip to results</a>
+<div class="shell">
+  <header class="masthead">
+    <div class="brand">
+      <div class="mark" aria-hidden="true">J</div>
+      <div>
+        <h1 class="wordmark">Job Hunter</h1>
+        <div class="tagline">fresh jobs, tailored resumes</div>
+      </div>
+    </div>
+    <div class="controls">
+      <div class="live" id="live" role="status" aria-live="polite"><span class="dot" aria-hidden="true"></span><span class="t" id="live-text">Loading</span></div>
+      <button class="theme-btn" id="theme" type="button" aria-label="Colour theme"></button>
+    </div>
+  </header>
+
+  <main>
+    <section class="stats" id="stats" aria-label="Summary"></section>
+    <div id="banner" role="status" aria-live="polite"></div>
+    <div class="section-head">
+      <h2>Search <i>runs</i></h2>
+      <span class="hint">newest first</span>
+    </div>
+    <section id="runs" aria-label="Search runs">
+      <div class="skeleton" aria-hidden="true"></div>
+      <div class="skeleton" aria-hidden="true" style="opacity:.6"></div>
+    </section>
+    <noscript><div class="banner warn">This dashboard needs JavaScript to show your results.</div></noscript>
+  </main>
+
+  <footer class="foot">
+    <span>Read-only view. Nothing here changes your results.</span>
+    <span>Everything stays on this computer. Refreshes every 15 seconds.</span>
+  </footer>
+</div>
 
 <script>
-const REFRESH_MS = 15000;
+"use strict";
+var REFRESH_MS = 15000;
+var STAGES = [["new", "Started", "Start"], ["researching", "Searching", "Search"], ["jobs_found", "Jobs found", "Found"], ["resume_ready", "Resumes ready", "Ready"], ["presented", "Presented", "Done"]];
+var RUN_CHIP = {
+  new: ["Started", "muted"], researching: ["Searching", "info working"], jobs_found: ["Jobs found", "info"],
+  resume_ready: ["Resumes ready", "warn"], presented: ["Presented", "good"], rejected: ["Rejected", "muted"], failed: ["Failed", "bad"]
+};
+var JOB_CHIP = { found: ["Found", "info"], resume_ready: ["Resume ready", "good"], skipped: ["Skipped", "muted"] };
+var ICONS = {
+  chev: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6l5 5 5-5"/></svg>',
+  pdf: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 1.8h5.2L12.5 5v9.2H4z"/><path d="M9 1.8V5h3.5"/></svg>',
+  out: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3H3v10h10v-3"/><path d="M9 2h5v5M14 2L7.5 8.5"/></svg>',
+  auto: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 3.5v17" /><path d="M12 3.5a8.5 8.5 0 010 17z" fill="currentColor"/></svg>',
+  light: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.3 5.3l1.6 1.6M17.1 17.1l1.6 1.6M18.7 5.3l-1.6 1.6M6.9 17.1l-1.6 1.6"/></svg>',
+  dark: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 14.5A8.5 8.5 0 019.5 4 8.5 8.5 0 1020 14.5z"/></svg>'
+};
 
+var state = { runs: [], detail: {}, sigRuns: "", sigDetail: {}, open: {}, filter: {}, autoOpened: false, first: true, error: null, lastOk: null };
+
+/* ---------- helpers ---------- */
+function $(s) { return document.querySelector(s); }
 function esc(s) {
-  return (s ?? "").toString().replace(/[&<>"']/g, c => ({
-    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
-  }[c]));
+  return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+    return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+  });
 }
-
-function fmtDate(s) {
-  if (!s) return "";
-  return s.replace("T", " ").slice(0, 16);
+/* Only ever link to http(s) pages, and only to files inside jobs/. Values come from the database. */
+function safeHttp(u) {
+  try { var x = new URL(u); return (x.protocol === "https:" || x.protocol === "http:") ? x.href : null; } catch (e) { return null; }
 }
-
-function badge(status) {
-  return `<span class="badge badge-${esc(status)}">${esc(status.replace("_", " "))}</span>`;
+function jobFile(p) {
+  if (!p || p.indexOf("..") !== -1 || !/^jobs\/[^\\]+$/.test(p)) return null;
+  return "/" + p.split("/").map(encodeURIComponent).join("/");
 }
-
-async function loadRuns() {
-  const res = await fetch("/api/runs");
-  if (!res.ok) throw new Error("failed to load runs");
-  return res.json();
+/* SQLite's datetime('now') is UTC without a zone marker. */
+function parseUTC(s) {
+  if (!s) return null;
+  var d = new Date(/[zZ]|[+-]\d\d:?\d\d$/.test(s) ? s : s.replace(" ", "T") + "Z");
+  return isNaN(d) ? null : d;
 }
-
-async function loadRun(id) {
-  const res = await fetch(`/api/runs/${id}`);
-  if (!res.ok) throw new Error("failed to load run detail");
-  return res.json();
+function fmtStamp(s) {
+  var d = parseUTC(s);
+  return d ? new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(d) : "";
 }
+function fmtClock(s) {
+  var d = parseUTC(s);
+  return d ? new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" }).format(d) : "";
+}
+function relTime(d) {
+  if (!d) return "";
+  var sec = (Date.now() - d.getTime()) / 1000;
+  if (sec < 45) return "just now";
+  var m = Math.round(sec / 60); if (m < 60) return m + "m ago";
+  var h = Math.round(m / 60); if (h < 24) return h + "h ago";
+  var days = Math.round(h / 24); return days === 1 ? "yesterday" : days + " days ago";
+}
+function postedInfo(iso) {
+  var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso || "");
+  if (!m) return null;
+  var posted = new Date(+m[1], +m[2] - 1, +m[3]);
+  var today = new Date(); today.setHours(0, 0, 0, 0);
+  var days = Math.max(0, Math.round((today - posted) / 86400000));
+  return {
+    rel: days === 0 ? "Today" : days === 1 ? "Yesterday" : days + " days ago",
+    abs: new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }).format(posted),
+    fresh: days <= 1
+  };
+}
+function tier(score) {
+  if (score == null) return ["none", "No score"];
+  if (score >= 85) return ["strong", "Strong match"];
+  if (score >= 70) return ["good", "Good match"];
+  if (score >= 55) return ["stretch", "A stretch"];
+  return ["weak", "Weak match"];
+}
+function title(s) { s = String(s || "").replace(/_/g, " "); return s.charAt(0).toUpperCase() + s.slice(1); }
+function chip(map, key) { var c = map[key] || [title(key), "muted"]; return '<span class="chip ' + c[1] + '">' + esc(c[0]) + "</span>"; }
 
-function renderJobsTable(jobs) {
-  if (!jobs || !jobs.length) {
-    return `<div class="empty">No jobs logged yet for this run.</div>`;
-  }
-  const rows = jobs.map(j => {
-    const resumeLinks = [];
-    if (j.resume_md_path) resumeLinks.push(`<a href="/${esc(j.resume_md_path)}" target="_blank">MD</a>`);
-    if (j.resume_pdf_path) resumeLinks.push(`<a href="/${esc(j.resume_pdf_path)}" target="_blank">PDF</a>`);
-    return `<tr>
-      <td>${esc(j.company)}</td>
-      <td>${esc(j.title)}</td>
-      <td>${esc(j.location || "")}</td>
-      <td class="score">${j.match_score ?? "—"}</td>
-      <td>${badge(j.status)}</td>
-      <td>${resumeLinks.join(" · ") || "—"}</td>
-      <td><a href="${esc(j.url)}" target="_blank">posting ↗</a></td>
-    </tr>`;
+/* ---------- rendering ---------- */
+function renderStats() {
+  var runs = state.runs, jobs = 0, ready = 0;
+  runs.forEach(function (r) { jobs += r.job_count || 0; ready += r.resume_ready_count || 0; });
+  var latest = runs[0], pct = jobs ? Math.round(ready / jobs * 100) : 0;
+  var presented = runs.filter(function (r) { return r.status === "presented"; }).length;
+  var tiles = [
+    ["Search runs", '<div class="stat-num" data-count="' + runs.length + '">' + runs.length + "</div>", presented + " presented"],
+    ["Jobs found", '<div class="stat-num" data-count="' + jobs + '">' + jobs + "</div>", "across every run"],
+    ["Resumes ready", '<div class="stat-num" data-count="' + ready + '">' + ready + "</div>", pct + "% of jobs tailored"],
+    ["Latest run", '<div class="stat-num text">' + esc(latest ? relTime(parseUTC(latest.created_at)) : "none yet") + "</div>", latest ? esc(latest.role) : "waiting for your first search"]
+  ];
+  $("#stats").innerHTML = tiles.map(function (t, i) {
+    return '<div class="stat' + (state.first ? " reveal" : "") + '" style="--i:' + i + '"><div class="stat-label">' + t[0] + "</div>" + t[1] + '<div class="stat-sub">' + t[2] + "</div></div>";
   }).join("");
-  return `<table>
-    <thead><tr>
-      <th>Company</th><th>Title</th><th>Location</th><th>Match</th><th>Status</th><th>Resume</th><th>Source</th>
-    </tr></thead>
-    <tbody>${rows}</tbody>
-  </table>`;
 }
 
-function renderEvents(events) {
+function railHtml(status) {
+  var idx = STAGES.map(function (s) { return s[0]; }).indexOf(status);
+  if (idx < 0) return "";
+  return '<ol class="rail" aria-label="Progress">' + STAGES.map(function (s, i) {
+    var cls = i < idx || status === "presented" ? "done" : i === idx ? "current" : "";
+    return '<li class="' + cls + '"' + (i === idx ? ' aria-current="step"' : "") + '><span class="l-long">' + esc(s[1]) + '</span><span class="l-short" aria-hidden="true">' + esc(s[2]) + "</span></li>";
+  }).join("") + "</ol>";
+}
+
+function jobRow(j) {
+  var t = tier(j.match_score), p = postedInfo(j.posted_date), url = safeHttp(j.url), pdf = jobFile(j.resume_pdf_path);
+  var posted = p
+    ? '<div class="posted-rel ' + (p.fresh ? "fresh" : "aging") + '"><span class="pdot"></span>' + esc(p.rel) + '</div><div class="posted-abs">' + esc(p.abs) + "</div>"
+    : '<span class="chip warn plain" title="The career page did not show when this job was posted">Date unknown</span>';
+  return '<tr role="row">' +
+    '<td class="c-job" role="cell"><div class="co">' + esc(j.company) + '</div><div class="ti">' + esc(j.title) + '</div>' + (j.location ? '<div class="job-loc">' + esc(j.location) + "</div>" : "") + '<div class="job-status">' + chip(JOB_CHIP, j.status) + "</div></td>" +
+    '<td class="c-match" role="cell"><span class="score tier-' + t[0] + '" title="' + esc(t[1]) + '"><span class="score-num" style="color:var(--ink)">' + (j.match_score == null ? "&ndash;" : esc(j.match_score)) + '</span><span class="meter" style="--v:' + (j.match_score || 0) + '"></span><span class="sr-only">' + esc(t[1]) + "</span></span></td>" +
+    '<td class="c-loc" role="cell">' + (esc(j.location) || '<span class="none">&ndash;</span>') + "</td>" +
+    '<td class="c-posted" role="cell">' + posted + "</td>" +
+    '<td class="c-status" role="cell">' + chip(JOB_CHIP, j.status) + "</td>" +
+    '<td class="c-actions" role="cell"><div class="actions">' +
+      (pdf ? '<a class="btn primary" href="' + esc(pdf) + '" target="_blank" rel="noopener">' + ICONS.pdf + "PDF</a>" : "") +
+      (url ? '<a class="btn" href="' + esc(url) + '" target="_blank" rel="noopener noreferrer">Posting ' + ICONS.out + "</a>" : (pdf ? "" : '<span class="none">No link</span>')) +
+    "</div></td></tr>";
+}
+
+function jobsHtml(run) {
+  var jobs = run.jobs || [];
+  if (!jobs.length) return '<div class="empty-filter">No jobs were logged for this run.</div>';
+  var counts = { all: jobs.length, tailored: 0, unknown: 0, skipped: 0 };
+  jobs.forEach(function (j) {
+    if (j.status === "resume_ready") counts.tailored++;
+    if (!j.posted_date) counts.unknown++;
+    if (j.status === "skipped") counts.skipped++;
+  });
+  var f = state.filter[run.id] || "all";
+  var shown = jobs.filter(function (j) {
+    return f === "tailored" ? j.status === "resume_ready" : f === "unknown" ? !j.posted_date : f === "skipped" ? j.status === "skipped" : true;
+  });
+  var showFilters = jobs.length >= 4 && (counts.unknown || counts.skipped || counts.tailored < jobs.length);
+  var filters = showFilters ? '<div class="filters" role="group" aria-label="Filter jobs">' + [["all", "All"], ["tailored", "Tailored"], ["unknown", "Date unknown"], ["skipped", "Skipped"]].filter(function (x) {
+    return x[0] === "all" || counts[x[0]] > 0;
+  }).map(function (x) {
+    return '<button type="button" class="filter" data-filter="' + x[0] + '" data-run="' + run.id + '" data-fid="f-' + run.id + "-" + x[0] + '" aria-pressed="' + (f === x[0]) + '">' + x[1] + '<span class="n">' + counts[x[0]] + "</span></button>";
+  }).join("") + "</div>" : "";
+  var table = shown.length
+    ? '<table class="jobs" role="table"><caption class="sr-only">Jobs found for ' + esc(run.role) + '</caption><thead role="rowgroup"><tr role="row"><th role="columnheader">Job</th><th class="c-match" role="columnheader">Match</th><th class="c-loc" role="columnheader">Location</th><th class="c-posted" role="columnheader">Posted</th><th class="c-status" role="columnheader">Status</th><th class="c-actions" role="columnheader">Open</th></tr></thead><tbody role="rowgroup">' + shown.map(jobRow).join("") + "</tbody></table>"
+    : '<div class="empty-filter">No jobs match this filter.</div>';
+  var legend = '<div class="legend" aria-hidden="true"><span class="tier-strong">85+ strong</span><span class="tier-good">70 to 84 good</span><span class="tier-stretch">55 to 69 a stretch</span><span class="tier-weak">under 55 weak</span></div>';
+  return filters + table + legend;
+}
+
+function timelineHtml(events) {
   if (!events || !events.length) return "";
-  const rows = events.slice().reverse().map(e =>
-    `<div class="event-row"><span class="t">${fmtDate(e.created_at)}</span><span>${esc(e.event)}${e.message ? " — " + esc(e.message) : ""}</span></div>`
-  ).join("");
-  return `<div class="events"><h4>Timeline</h4>${rows}</div>`;
+  var rows = events.slice().reverse().map(function (e) {
+    return '<li class="tl-item"><span class="tl-time">' + esc(fmtStamp(e.created_at)) + '</span><span class="tl-msg"><b>' + esc(title(e.event)) + "</b>" + (e.message ? " <span>&middot; " + esc(e.message) + "</span>" : "") + "</span></li>";
+  }).join("");
+  return '<details class="tl"><summary>Timeline (' + events.length + ')</summary><ol class="tl-list">' + rows + "</ol></details>";
 }
 
-const openRuns = new Set();
-const detailCache = new Map();
-
-async function renderRuns() {
-  const statusBar = document.getElementById("status-bar");
-  try {
-    const runs = await loadRuns();
-    statusBar.textContent = `${runs.length} run(s) · last updated ${new Date().toLocaleTimeString()}`;
-    const container = document.getElementById("runs");
-    if (!runs.length) {
-      container.innerHTML = `<div class="no-runs">No search runs yet. Runs are created by the job-finder skill in Hermes.</div>`;
-      return;
-    }
-    container.innerHTML = runs.map(r => {
-      const sub = [r.seniority, r.location].filter(Boolean).join(" · ");
-      return `<div class="run" data-id="${r.id}">
-        <div class="run-head" onclick="toggleRun(${r.id})">
-          <div>
-            <div class="run-title">${esc(r.role)}</div>
-            <div class="run-sub">${esc(sub)} · ${r.job_count} job(s) found · ${r.resume_ready_count} resume(s) ready · started ${fmtDate(r.created_at)}</div>
-          </div>
-          ${badge(r.status)}
-        </div>
-        <div class="run-body" id="run-body-${r.id}"></div>
-      </div>`;
-    }).join("");
-    for (const id of openRuns) {
-      const body = document.getElementById(`run-body-${id}`);
-      if (body) { body.classList.add("open"); renderRunDetail(id); }
-    }
-  } catch (e) {
-    statusBar.textContent = "Could not reach the dashboard server / database.";
+function runBody(run) {
+  var d = state.detail[run.id];
+  if (!d) return '<div class="empty-filter">Loading jobs&hellip;</div>';
+  var note = "";
+  if ((run.status === "rejected" || run.status === "failed") && (d.error_message || run.error_message)) {
+    note = '<div class="note ' + (run.status === "failed" ? "bad" : "muted") + '"><span><b>' + (run.status === "failed" ? "This run failed." : "This run was closed.") + "</b> " + esc(d.error_message || run.error_message) + "</span></div>";
   }
+  return railHtml(run.status) + note + jobsHtml(d) + timelineHtml(d.events);
 }
 
-async function renderRunDetail(id) {
-  const body = document.getElementById(`run-body-${id}`);
-  if (!body) return;
-  try {
-    const run = await loadRun(id);
-    detailCache.set(id, run);
-    body.innerHTML = (run.error_message ? `<div class="empty">Error: ${esc(run.error_message)}</div>` : "")
-      + renderJobsTable(run.jobs) + renderEvents(run.events);
-  } catch (e) {
-    body.innerHTML = `<div class="empty">Could not load run detail.</div>`;
+function renderRuns() {
+  var host = $("#runs");
+  if (!state.runs.length) {
+    host.innerHTML = state.error ? "" : '<div class="empty' + (state.first ? " reveal" : "") + '"><div class="empty-art" aria-hidden="true"><i></i><i></i><i></i></div><h3>No searches yet</h3><p>Open your Job Hunter chat and say <code>Find jobs for me.</code> Your results will show up here on their own.</p></div>';
+    return;
   }
+  host.innerHTML = state.runs.map(function (r, i) {
+    var open = !!state.open[r.id];
+    var meta = [r.seniority, r.location, fmtStamp(r.created_at)].filter(Boolean).map(function (m) { return "<span>" + esc(m) + "</span>"; }).join("");
+    return '<article class="run' + (state.first ? " reveal" : "") + '" style="--i:' + (i + 4) + '">' +
+      '<h3 class="run-title"><button type="button" class="run-head" data-toggle="' + r.id + '" data-fid="run-' + r.id + '" aria-expanded="' + open + '" aria-controls="body-' + r.id + '">' +
+        '<span class="run-main"><span class="run-role">' + esc(r.role) + '</span><span class="run-meta">' + meta + "</span></span>" +
+        '<span class="run-counts"><span><b>' + (r.job_count || 0) + "</b>jobs</span><span><b>" + (r.resume_ready_count || 0) + "</b>tailored</span></span>" +
+        chip(RUN_CHIP, r.status) + '<span class="chev" aria-hidden="true">' + ICONS.chev + "</span></button></h3>" +
+      '<div class="run-body" id="body-' + r.id + '"' + (open ? "" : " hidden") + ">" + (open ? runBody(r) : "") + "</div></article>";
+  }).join("");
 }
 
-function toggleRun(id) {
-  const body = document.getElementById(`run-body-${id}`);
-  if (!body) return;
-  if (openRuns.has(id)) {
-    openRuns.delete(id);
-    body.classList.remove("open");
-  } else {
-    openRuns.add(id);
-    body.classList.add("open");
-    renderRunDetail(id);
+function renderLive() {
+  var el = $("#live");
+  el.classList.toggle("err", !!state.error);
+  $("#live-text").innerHTML = state.error ? "Reconnecting" : state.lastOk ? '<span class="lbl">Updated </span>' + esc(new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" }).format(state.lastOk)) : "Loading";
+  var b = $("#banner");
+  if (state.error && state.runs.length) {
+    b.innerHTML = '<div class="banner warn"><span><b>Connection lost.</b> Showing your last results and trying again every 15 seconds.</span></div>';
+  } else if (state.error) {
+    b.innerHTML = '<div class="banner bad"><span><b>Can&rsquo;t reach your results.</b> The dashboard server or the database isn&rsquo;t ready. Ask Job Hunter to start the dashboard, or run the installer again.</span></div>';
+  } else { b.innerHTML = ""; }
+}
+
+function countUp() {
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  document.querySelectorAll("[data-count]").forEach(function (el) {
+    var to = +el.dataset.count, t0 = performance.now();
+    if (!to) return;
+    (function step(now) {
+      var k = Math.min(1, (now - t0) / 800), e = 1 - Math.pow(1 - k, 3);
+      el.textContent = Math.round(to * e);
+      if (k < 1) requestAnimationFrame(step);
+    })(t0);
+  });
+}
+
+function render() {
+  var focusId = document.activeElement && document.activeElement.dataset ? document.activeElement.dataset.fid : null;
+  renderStats();
+  renderRuns();
+  if (focusId) { var again = document.querySelector('[data-fid="' + focusId + '"]'); if (again) again.focus({ preventScroll: true }); }
+  if (state.first) { countUp(); state.first = false; }
+}
+
+/* ---------- data ---------- */
+function getJSON(url) {
+  return fetch(url, { cache: "no-store" }).then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); });
+}
+function loadDetail(id) {
+  return getJSON("/api/runs/" + id).then(function (d) {
+    var sig = JSON.stringify(d);
+    if (state.sigDetail[id] === sig) return false;
+    state.sigDetail[id] = sig; state.detail[id] = d; return true;
+  });
+}
+function refresh() {
+  return getJSON("/api/runs").then(function (runs) {
+    var changed = false, sig = JSON.stringify(runs);
+    if (sig !== state.sigRuns) { state.sigRuns = sig; state.runs = runs; changed = true; }
+    if (!state.autoOpened && runs.length) { state.open[runs[0].id] = true; state.autoOpened = true; }
+    var ids = runs.filter(function (r) { return state.open[r.id]; }).map(function (r) { return r.id; });
+    return Promise.all(ids.map(function (id) { return loadDetail(id).catch(function () { return false; }); })).then(function (flags) {
+      if (flags.some(Boolean)) changed = true;
+      state.error = null; state.lastOk = new Date();
+      if (changed || state.first) render();
+      renderLive();
+    });
+  }).catch(function (e) {
+    state.error = e; renderLive();
+    if (state.first) { render(); }
+  });
+}
+
+/* ---------- interaction ---------- */
+$("#runs").addEventListener("click", function (ev) {
+  var t = ev.target.closest("[data-toggle]");
+  if (t) {
+    var id = +t.dataset.toggle;
+    state.open[id] = !state.open[id];
+    if (state.open[id] && !state.detail[id]) { render(); loadDetail(id).then(render).catch(function () {}); } else { render(); }
+    return;
   }
-}
+  var f = ev.target.closest("[data-filter]");
+  if (f) { state.filter[+f.dataset.run] = f.dataset.filter; render(); }
+});
 
-renderRuns();
-setInterval(renderRuns, REFRESH_MS);
+function paintTheme() {
+  var pref = window.__theme.get(), btn = $("#theme");
+  btn.innerHTML = ICONS[pref];
+  var next = { auto: "light", light: "dark", dark: "auto" }[pref];
+  btn.setAttribute("aria-label", "Colour theme: " + pref + ". Switch to " + next + ".");
+  btn.title = "Theme: " + pref + " (click for " + next + ")";
+}
+$("#theme").addEventListener("click", function () {
+  window.__theme.set({ auto: "light", light: "dark", dark: "auto" }[window.__theme.get()]);
+  paintTheme();
+});
+paintTheme();
+
+refresh();
+setInterval(refresh, REFRESH_MS);
 </script>
 </body>
 </html>

@@ -1,34 +1,46 @@
 # Resume Library
 
-Your permanent, source-of-truth CV lives here. Every run reads from this
-folder -- it is never overwritten or re-uploaded by the tailoring output
-(tailored copies go under `jobs/<id>-<company-slug>/`, not here).
+Your permanent, source-of-truth resume lives here, as a **PDF**. Every run
+reads it; nothing ever overwrites it (tailored copies go to
+`jobs/<id>-<company-slug>/resume.pdf`, not here).
 
-## Expected files
+## Files
 
-- `resume.md` -- your base resume in Markdown. Git-ignored (see Privacy
-  below). If it doesn't exist yet, `scripts/setup-hermes-profile.py` (run via
-  `install.bat` / `install.command`) seeds it from `resume.example.md`.
-  Replace it with your real resume -- keep it structured (headings for
-  Summary / Experience / Skills / Education) so the resume-editor skill can
-  reorder and re-emphasize sections reliably.
-- `resume.example.md` -- the tracked, generic starting template. Never put
-  real personal information in this file; it's the one that gets committed.
-- `resume.pdf` (optional) -- a rendered copy for your own reference. Not
-  read by the pipeline; `resume.md` is the only source the skills parse.
+- `resume.pdf` -- your base resume. It must be a text-based PDF (exported from
+  Word, Google Docs, etc.), not a scan or a photo, so the skills can read it.
+- `ats-profile.md` -- optional. Details you gave the chat so tailored resumes pass
+  applicant tracking systems (ATS): your phone with the country code, City and
+  Country, LinkedIn, and start and end months for your jobs. The chat creates and
+  fills it by asking you one question at a time; you can edit it by hand. It wins
+  over `resume.pdf` for contact details and dates. Example:
+
+  ```
+  Full name: Sam Doe
+  Phone: +234 801 234 5678
+  Location: Lagos, Nigeria
+  LinkedIn: linkedin.com/in/samdoe
+  Dates: Acme Ltd | Start: Mar 2023 | End: Present
+  ```
+
+There is no Markdown resume anywhere in this project. Resumes are PDF only,
+both the one you provide and every tailored one the pipeline makes.
+
+## How it gets here
+
+You don't have to copy it yourself. On your first chat with the `job-hunter`
+profile, the onboarding skill asks for your resume PDF and puts it in place,
+then asks for any ATS details it's missing. To swap in a new resume later, ask
+in chat ("I have a new resume at <path>") or replace `resume.pdf` here yourself.
 
 ## Rules
 
-- Never delete or edit `resume.md` from inside a skill run -- it is read-only
-  input. If your real experience changes, update it yourself.
-- The resume-editor skill never invents experience, employers, titles, or
-  dates that aren't in this file.
+- The resume-editor skill never edits `resume.pdf` and never invents
+  experience, employers, titles, or dates that aren't in it or in
+  `ats-profile.md`. The only times a skill writes here are onboarding (a new
+  resume) and when you answer its ATS questions.
 
 ## Privacy
 
-`resume.md` is git-ignored on purpose -- it holds your real name, contact
-details, and work history. Only `resume.example.md` (the generic template)
-is ever committed. Your real resume stays local, untracked, and never gets
-pushed anywhere. If you clone this repo on a new machine, the setup script
-will seed `resume.md` from the example template for you -- then replace it
-with your real one.
+`resume.pdf` and `ats-profile.md` are git-ignored on purpose: they hold your real
+name, contact details, and work history. Everything in this folder except this
+README is ignored, so nothing personal can be committed or pushed by accident.

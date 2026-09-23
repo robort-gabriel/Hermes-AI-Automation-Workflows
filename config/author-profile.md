@@ -10,6 +10,16 @@ truthful content is emphasized and phrased.
 - _(e.g. "Direct and metrics-first. Lead bullets with the outcome, not the
   task.")_
 
+## Look
+
+Optional. Resumes are built to pass applicant tracking systems (ATS), so the
+layout is fixed: one column, Arial, standard headings. The only thing you can
+change is the accent colour, which is used on your name and the section
+headings and nowhere else. Pick a dark colour so it stays readable when
+printed.
+
+- **Accent colour:** #1F3A5F
+
 ## Do
 
 - Mirror keywords from the job description where they truthfully describe

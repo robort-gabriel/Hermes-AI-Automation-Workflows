@@ -8,13 +8,18 @@ directly (read-only) -- it never calls this CLI with a mutating subcommand.
 """
 import argparse
 import json
+import re
 import sqlite3
 import sys
+from datetime import date, datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 DB_PATH = ROOT / "data" / "job-hunter.db"
 SCHEMA_PATH = ROOT / "data" / "schema.sql"
+SEARCH_CONFIG_PATH = ROOT / "config" / "search-config.md"
+DEFAULT_MAX_JOB_AGE_DAYS = 3
+UNKNOWN_DATE_TOKENS = {"", "unknown", "n/a", "na", "none", "null", "-"}
 
 
 def get_conn():
@@ -26,6 +31,48 @@ def get_conn():
 
 def row_to_dict(row):
     return {k: row[k] for k in row.keys()}
+
+
+def fail(code, error, message):
+    """Print a JSON error and exit non-zero, so a skill run sees exactly why
+    a write was refused instead of a silent no-op."""
+    print(json.dumps({"error": error, "message": message}))
+    sys.exit(code)
+
+
+def max_job_age_days():
+    """Freshness window in days, read from config/search-config.md (the
+    `Max job age (days)` line) so there is one place to change it."""
+    try:
+        text = SEARCH_CONFIG_PATH.read_text(encoding="utf-8")
+    except OSError:
+        return DEFAULT_MAX_JOB_AGE_DAYS
+    m = re.search(r"Max job age \(days\):\*\*\s*(\d+)", text)
+    return int(m.group(1)) if m else DEFAULT_MAX_JOB_AGE_DAYS
+
+
+def parse_posted_date(value):
+    """Return a date, or None when the posting date is unknown/missing."""
+    if value is None:
+        return None
+    v = value.strip()
+    if v.lower() in UNKNOWN_DATE_TOKENS:
+        return None
+    try:
+        return datetime.strptime(v[:10], "%Y-%m-%d").date()
+    except ValueError:
+        fail(2, "invalid_date",
+             f"Could not read posted date '{value}'. Use YYYY-MM-DD, or omit "
+             "--posted-date if the date cannot be verified.")
+
+
+def require_onboarded(conn):
+    row = conn.execute("SELECT value FROM settings WHERE key = 'onboarded'").fetchone()
+    if not row or row["value"] != "yes":
+        conn.close()
+        fail(4, "not_onboarded",
+             "Setup is not finished. Load the onboarding skill and complete it "
+             "before starting a run.")
 
 
 def cmd_init(args):
@@ -58,6 +105,7 @@ def _touch_run(conn, run_id, event, message=None, job_id=None):
 
 def cmd_start_run(args):
     conn = get_conn()
+    require_onboarded(conn)
     cur = conn.execute(
         "INSERT INTO runs (role, seniority, location, target_companies, status) "
         "VALUES (?, ?, ?, ?, 'new')",
@@ -191,6 +239,14 @@ def cmd_recent_titles(args):
 # ---------------------------------------------------------------------------
 
 def cmd_add_job(args):
+    posted = parse_posted_date(args.posted_date)
+    limit = max_job_age_days()
+    if posted is not None:
+        age = (date.today() - posted).days
+        if age > limit:
+            fail(3, "stale",
+                 f"Not logged: posted {age} days ago ({posted.isoformat()}), "
+                 f"and only jobs from the last {limit} days are kept.")
     conn = get_conn()
     cur = conn.execute(
         """INSERT INTO jobs
@@ -198,13 +254,21 @@ def cmd_add_job(args):
             match_score, match_notes, status)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'found')""",
         (args.run_id, args.company, args.title, args.url, args.location,
-         args.source, args.posted_date, args.match_score, args.match_notes),
+         args.source, posted.isoformat() if posted else None,
+         args.match_score, args.match_notes),
     )
     jid = cur.lastrowid
-    _touch_run(conn, args.run_id, "job_found", f"{args.company}: {args.title}", job_id=jid)
+    note = f"{args.company}: {args.title}"
+    if posted is None:
+        note += " (date unknown)"
+    _touch_run(conn, args.run_id, "job_found", note, job_id=jid)
     conn.commit()
     conn.close()
-    print(json.dumps({"id": jid, "run_id": args.run_id, "status": "found"}))
+    print(json.dumps({
+        "id": jid, "run_id": args.run_id, "status": "found",
+        "posted_date": posted.isoformat() if posted else None,
+        "date_unknown": posted is None,
+    }))
 
 
 def cmd_get_job(args):
@@ -231,11 +295,21 @@ def cmd_list_jobs(args):
 
 
 def cmd_save_resume(args):
+    pdf = ROOT / args.resume_pdf_path
+    if pdf.suffix.lower() != ".pdf":
+        fail(2, "not_pdf", "Resumes are PDF only: --resume-pdf-path must end in .pdf")
+    try:
+        with open(pdf, "rb") as f:
+            header = f.read(5)
+    except OSError:
+        fail(2, "missing_pdf", f"No file at {args.resume_pdf_path}. Render the PDF first.")
+    if header != b"%PDF-":
+        fail(2, "not_pdf", f"{args.resume_pdf_path} is not a valid PDF file.")
     conn = get_conn()
     conn.execute(
-        """UPDATE jobs SET status='resume_ready', job_folder=?, resume_md_path=?,
+        """UPDATE jobs SET status='resume_ready', job_folder=?,
              resume_pdf_path=?, error_message=NULL WHERE id = ?""",
-        (args.job_folder, args.resume_md_path, args.resume_pdf_path, args.id),
+        (args.job_folder, args.resume_pdf_path, args.id),
     )
     row = conn.execute("SELECT run_id FROM jobs WHERE id = ?", (args.id,)).fetchone()
     if row:
@@ -275,6 +349,34 @@ def cmd_get_setting(args):
     print(json.dumps({"key": args.key, "value": row["value"] if row else None}))
 
 
+def cmd_migrate(args):
+    """Bring an existing database up to date. Idempotent and non-destructive:
+    drops the retired resume_md_path column (best effort, older SQLite can't),
+    removes the retired live_mode setting, and marks installs that already
+    have run history as onboarded so they are not asked to set up again."""
+    if not DB_PATH.exists():
+        fail(2, "no_database", f"No database at {DB_PATH}. Run: python scripts/db.py init")
+    conn = get_conn()
+    changes = []
+    cols = [r["name"] for r in conn.execute("PRAGMA table_info(jobs)")]
+    if "resume_md_path" in cols:
+        try:
+            conn.execute("ALTER TABLE jobs DROP COLUMN resume_md_path")
+            changes.append("dropped jobs.resume_md_path")
+        except sqlite3.OperationalError:
+            changes.append("kept jobs.resume_md_path (this SQLite cannot drop columns; unused)")
+    if conn.execute("DELETE FROM settings WHERE key = 'live_mode'").rowcount:
+        changes.append("removed live_mode setting")
+    has_flag = conn.execute("SELECT 1 FROM settings WHERE key = 'onboarded'").fetchone()
+    has_runs = conn.execute("SELECT 1 FROM runs LIMIT 1").fetchone()
+    if not has_flag and has_runs:
+        conn.execute("INSERT INTO settings (key, value) VALUES ('onboarded', 'yes')")
+        changes.append("marked onboarded (existing run history found)")
+    conn.commit()
+    conn.close()
+    print(json.dumps({"migrated": True, "changes": changes}))
+
+
 def cmd_set_setting(args):
     conn = get_conn()
     conn.execute(
@@ -293,7 +395,9 @@ def main():
 
     sub.add_parser("init", help="Reset and recreate the database from schema.sql (deletes any existing DB file first)").set_defaults(func=cmd_init)
 
-    a = sub.add_parser("start-run", help="Start a new search run")
+    sub.add_parser("migrate", help="Update an existing database to the current schema (safe to re-run)").set_defaults(func=cmd_migrate)
+
+    a = sub.add_parser("start-run", help="Start a new search run (refused until onboarding is complete)")
     a.add_argument("--role", required=True)
     a.add_argument("--seniority", default=None)
     a.add_argument("--location", default=None)
@@ -338,14 +442,14 @@ def main():
     a.add_argument("--days", type=int, default=30)
     a.set_defaults(func=cmd_recent_titles)
 
-    a = sub.add_parser("add-job", help="Log a job listing found for a run")
+    a = sub.add_parser("add-job", help="Log a job listing found for a run (refused if posted longer ago than the freshness window)")
     a.add_argument("--run-id", type=int, required=True)
     a.add_argument("--company", required=True)
     a.add_argument("--title", required=True)
     a.add_argument("--url", required=True)
     a.add_argument("--location", default=None)
-    a.add_argument("--source", default=None, help="'target-list' or 'search-verified'")
-    a.add_argument("--posted-date", default=None)
+    a.add_argument("--source", default=None, help="'target-list' or 'career-page-discovered'")
+    a.add_argument("--posted-date", default=None, help="YYYY-MM-DD. Omit if the date cannot be verified; the job is then logged as 'date unknown'")
     a.add_argument("--match-score", type=int, default=None)
     a.add_argument("--match-notes", default=None)
     a.set_defaults(func=cmd_add_job)
@@ -359,11 +463,10 @@ def main():
     a.add_argument("--status", default=None)
     a.set_defaults(func=cmd_list_jobs)
 
-    a = sub.add_parser("save-resume", help="Record a tailored resume for a job (status -> resume_ready)")
+    a = sub.add_parser("save-resume", help="Record a tailored resume PDF for a job (status -> resume_ready)")
     a.add_argument("--id", type=int, required=True)
     a.add_argument("--job-folder", required=True)
-    a.add_argument("--resume-md-path", required=True)
-    a.add_argument("--resume-pdf-path", default=None)
+    a.add_argument("--resume-pdf-path", required=True, help="Project-relative path to the rendered PDF (must exist)")
     a.set_defaults(func=cmd_save_resume)
 
     a = sub.add_parser("skip-job", help="Mark a job skipped (e.g. match too weak to tailor a resume)")
@@ -378,11 +481,11 @@ def main():
     a.add_argument("--message", default=None)
     a.set_defaults(func=cmd_add_event)
 
-    a = sub.add_parser("get-setting", help="Read one key from the settings table (e.g. live_mode)")
+    a = sub.add_parser("get-setting", help="Read one key from the settings table (e.g. onboarded)")
     a.add_argument("--key", required=True)
     a.set_defaults(func=cmd_get_setting)
 
-    a = sub.add_parser("set-setting", help="Write one key in the settings table (e.g. live_mode)")
+    a = sub.add_parser("set-setting", help="Write one key in the settings table (e.g. onboarded)")
     a.add_argument("--key", required=True)
     a.add_argument("--value", required=True)
     a.set_defaults(func=cmd_set_setting)
